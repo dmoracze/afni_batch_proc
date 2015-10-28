@@ -1,0 +1,83 @@
+#!/bin/tcsh
+# This script will save you some time downloading data from fmri.umd.edu
+# written by dmoracze on 9/21/2015
+#
+# Initialize variables and set defaults
+set count = 1
+set dir = `pwd`
+set perm = 775
+set study = "RED\ Social\ Communication"
+set uname = $user
+set subj = ()
+# parse the inputs
+if ($#argv == 0) then
+	echo " "
+	echo "**** No options given ****"
+	echo " "
+	echo "Here, this may help you:"
+	set argv = (-h)
+endif
+while ($count <= $#argv)
+	switch("$argv[$count]")
+		case "-h":
+			echo " "
+			echo "Usage: dl.data [options] -s subjectname"
+			echo " "
+			echo "[options]:"
+			echo "-h                  show this help file"
+			echo "-s felix            felix will be the subject ID that you want to download"
+			echo "                    to download more than one subject, use -s before every ID"
+			echo "-dir ../study_dir   directory to download data to (absolute or relative path)"
+			echo "                      default is current directory"
+			echo "-perm perm_code     permissions code when changing permissions on data"
+			echo "                      default is 775"
+			echo "-study My Study     study ID directory from fmri server, quotes and escaped" 
+			echo "                    spaces are essential"
+			echo "                      default is RED Social Communication"
+			echo "-user dmitri        dmitri is the user who will log on to fmri (if not you,"
+			echo "                    it will ask for password)"
+			echo "                      default is current user"
+			echo " "
+		exit
+		case "-s":
+			@ count++
+			set subj = ($subj $argv[$count])
+		breaksw
+		case "-dir":
+			@ count++
+			set dir = $argv[$count]
+		breaksw
+		case "-perm":
+			@ count++
+			set perm = $argv[$count]
+		breaksw
+		case "-study":
+			@ count++
+			set study = "$argv[$count]"
+		breaksw
+		case "-user":
+			@ count++
+			set uname = $argv[$count]
+		breaksw
+	endsw
+	shift
+end
+# check for subject IDs
+if ($#subj == 0) then
+	echo " "
+	echo "No subject IDs given\!!"
+	echo "dl.data -h for help file"
+	echo " "
+	exit
+endif
+# download data and change permissions
+foreach s ($subj)
+	scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/Elizabeth\ Redcay/$study/$s/" $dir
+	chmod -R $perm $dir/$s
+end
+echo " "
+echo "============================================"
+echo "A long time ago on a server far, far away..."
+echo "============================================"
+echo " "
+exit

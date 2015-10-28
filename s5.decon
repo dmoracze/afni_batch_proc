@@ -1,0 +1,174 @@
+#!/bin/tcsh
+# This script is set up to concatenate various regressors of no interest and do a linear regression via 3dDeconvolve
+# NOTE: you need to edit the actual command to include your HRF and contrasts
+#
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+# Script assumes that all runs to be included will have the same naming convention below:
+#
+# Assumed directory structure and naming (if different, change script):
+# data_dir/
+#	subject_ID/
+#		bold/
+#		   {subj}_{study_id}_?.pb04.scale+tlrc.BRIK
+#		   
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+set subj 	= (RED_LL_163)
+set data_dir 	= ~/Desktop
+set timing_dir	= ~/Desktop
+set censor	= 1
+set study_id 	= V292
+# log will include the runs that were included in the resulting stats file
+set log_name	= decon.log
+set log_dir	= ~/Desktop
+set ow_log	= yes
+
+set job 	= 10 	# the more jobs, the faster
+set beta_series	= no
+set all_runs	= yes 	# this will concatenate all runs named $study_id
+# if all_runs 	= no:
+set runs 	= ()
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# Set up log file
+if (-d $log_dir) then
+	set log = $log_dir/$log_name
+else
+	echo " "
+	echo "Specified log directory does not exist, I will put log in:" ~
+	echo " "
+	set log = ~/$log_name
+endif
+if ($ow_log == yes && -f $log) \rm -f $log
+set now = `date +"%a %b %d %Y %r"`
+echo " " | tee -a $log
+echo "====================================================" >> $log
+echo "s5.decon ran by $user on $now " >> $log
+echo "====================================================" >> $log
+echo " " >> $log
+# Directory check
+if (! -d $data_dir && ! -d $timing_dir) then
+	echo " "
+	echo "Data and/or timing file directory directory does not exist, script failing..." | tee -a $log
+	echo "It's a trap! - Admiral Ackbar" | tee -a $log
+	echo " "
+	exit
+else
+	cd $data_dir
+endif
+# Subject loop
+foreach s ($subj)
+	echo "========================================================================="
+	echo "========================================================================="
+	echo " "
+	echo "Current Subject: $s"
+	echo " "
+# Can I find the current subject?
+	if (! -d $s/bold) then
+		echo "Cannot find subject $s" | tee -a $log
+		echo "Next subject..."
+	else
+		echo $s >> $log
+		cd $s/bold
+# set correct files
+		if ($all_runs == yes) then
+			set c_runs = ${s}_${study_id}_?.pb04.scale+tlrc.BRIK
+			set demean = ${s}_${study_id}_?.MoPar_demean.1D
+			set derv = ${s}_${study_id}_?.MoPar_derv.1D
+			set cen = ${s}_${study_id}_?.censor${censor}mm.1D
+		else
+			set c_runs = ()
+			set demean = ()
+			set derv = ()
+			set cen = ()
+			foreach r ($runs)
+				if (-d ${s}_$r.pb04.scale+tlrc.BRIK) then
+					set c_runs = ($c_runs ${s}_$r.pb04.scale+tlrc.BRIK)
+					set demean = ($demean ${s}_$r.MoPar_demean.1D)
+					set derv = ($derv ${s}_$r.MoPar_derv.1D)
+					set cen = ($cen ${s}_$r.censor${censor}mm.1D)
+				else
+					echo "Cannot find:" $r >> $log
+				endif
+		endif
+		echo "runs:" $c_runs >> $log 
+# cat motion
+		echo "Concatenating files..."
+		if (! -f ${s}_${study_id}all.MoPar_demean.1D) then
+			cat $demean > ${s}_${study_id}all.MoPar_demean.1D
+		else
+			echo " "
+			echo "MoPar_deman already exists"
+		endif
+		if (! -f ${s}_${study_id}all.MoPar_derv.1D) then
+			cat $derv > ${s}_${study_id}all.MoPar_derv.1D
+		else
+			echo " "
+			echo "MoPar_derv already exists"
+		endif
+		if (! -f ${s}_${study_id}all.censor${censor}mm.1D) then
+			cat $cen > ${s}_${study_id}all.censor${censor}mm.1D
+		else
+			echo " "
+			echo "${censor}mm censor file already exists"
+		endif
+# Linear regression
+		echo " "
+		echo "============================== 3dDeconvolve =============================="
+		if ($beta_series == yes) then
+			3dDeconvolve 										\
+				-input $c_runs									\
+				-polort A -jobs $job  								\
+				-ortvec ${s}_${study_id}all.MoPar_demean.1D demean 				\
+				-ortvec ${s}_${study_id}all.MoPar_derv.1D derv 					\
+				-censor ${s}_${study_id}all.censor${censor}.1D 					\
+				-num_stimts 7 									\
+				-stim_times_IM 1 $timing_dir/${s}_LA.txt 'dmBLOCK(1)' -stim_label 1 LA 		\
+				-stim_times_IM 2 $timing_dir/${s}_MA.txt 'dmBLOCK(1)' -stim_label 2 MA 		\
+				-stim_times_IM 3 $timing_dir/${s}_NA.txt 'dmBLOCK(1)' -stim_label 3 NA 		\
+				-stim_times_IM 4 $timing_dir/${s}_LO.txt 'dmBLOCK(1)' -stim_label 4 LO 		\
+				-stim_times_IM 5 $timing_dir/${s}_MO.txt 'dmBLOCK(1)' -stim_label 5 MO 		\
+				-stim_times_IM 6 $timing_dir/${s}_NO.txt 'dmBLOCK(1)' -stim_label 6 NO 		\
+				-stim_times_IM 7 $timing_dir/${s}_IO.txt 'dmBLOCK(1)' -stim_label 7 IO 		\
+				-gltsym 'SYM: LA -NA' -glt_label 1 LA-NA 					\
+				-gltsym 'SYM: LO -NO' -glt_label 2 LO-NO 					\
+				-gltsym 'SYM: MA -NA' -glt_label 3 MA-NA 					\
+				-gltsym 'SYM: MO -NO' -glt_label 4 MO-NO 					\
+				-gltsym 'SYM: LA -MA' -glt_label 5 LA-MA 					\
+				-gltsym 'SYM: LO -MO' -glt_label 6 LO-MO 					\
+				-fout -tout 									\
+				-x1D ${s}.xmat.1D -x1D_uncensored ${s}.uncensor.xmat.1D 			\
+				-errts ${s}_errts -fitts ${s}_fitts -bucket ${s}_stats 
+		else
+			3dDeconvolve 										\
+				-input $c_runs 									\
+				-polort A -jobs $job  								\
+				-ortvec ${s}_${study_id}all.MoPar_demean.1D demean 				\
+				-ortvec ${s}_${study_id}all.MoPar_derv.1D derv 					\
+				-censor ${s}_${study_id}all.censor${censor}.1D 					\
+				-num_stimts 7 									\
+				-stim_times 1 $timing_dir/${s}_LA.txt 'CSPLIN(0,15.4,8)' -stim_label 1 LA 	\
+				-stim_times 2 $timing_dir/${s}_MA.txt 'CSPLIN(0,15.4,8)' -stim_label 2 MA 	\
+				-stim_times 3 $timing_dir/${s}_NA.txt 'CSPLIN(0,15.4,8)' -stim_label 3 NA 	\
+				-stim_times 4 $timing_dir/${s}_LO.txt 'CSPLIN(0,15.4,8)' -stim_label 4 LO 	\
+				-stim_times 5 $timing_dir/${s}_MO.txt 'CSPLIN(0,15.4,8)' -stim_label 5 MO 	\
+				-stim_times 6 $timing_dir/${s}_NO.txt 'CSPLIN(0,15.4,8)' -stim_label 6 NO 	\
+				-stim_times 7 $timing_dir/${s}_IO.txt 'CSPLIN(0,15.4,8)' -stim_label 7 IO 	\
+				-gltsym 'SYM: LA -NA' -glt_label 1 LA-NA 					\
+				-gltsym 'SYM: LO -NO' -glt_label 2 LO-NO 					\
+				-gltsym 'SYM: MA -NA' -glt_label 3 MA-NA 					\
+				-gltsym 'SYM: MO -NO' -glt_label 4 MO-NO 					\
+				-gltsym 'SYM: LA -MA' -glt_label 5 LA-MA 					\
+				-gltsym 'SYM: LO -MO' -glt_label 6 LO-MO 					\
+				-fout -tout 									\
+				-x1D ${s}_IM.xmat.1D -x1D_uncensored ${s}_IM.uncensor.xmat.1D 			\
+				-errts ${s}_IM_errts -fitts ${s}_IM_fitts -bucket ${s}_IM_stats 
+		endif
+	endif
+end
+exit

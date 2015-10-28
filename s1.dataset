@@ -1,0 +1,358 @@
+#!/bin/tcsh
+# This script will create AFNI datasets from raw dicom files using to3d.  
+#
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+# Script assumptions:
+#
+# 1. Directory structure:
+# $source_dir/	 		--> defined below
+#     $subj/
+#          2*/	 		--> raw data from scanner usually a folder named with the date, year first 		
+#            $runs[A:B]/	--> as defined by runs identifiers below
+#		*.dcm
+#
+# File structure to be set up:
+# $dest_dir/			--> defined below
+#     $subj/
+#          bold/
+#               AFNI datasets
+#
+# 2. A note about conflicting files:
+#	Anatomical - script can deal with 2 T1 conflicts, more than that it will skip and print the conflict to the log
+#		     in this case you'll have to do some manual editing
+#	Functional - script can deal with any number of conflicts, it will choose the directory with the number of
+#		     volumes specified in the preamble ($vA or $vB)
+#		     HOWEVER - if there are conflicting directories and both (or more) have the correct number of dicoms
+#		     then it will skip and note the conflict to the log.... you'll have to do some manual editing 
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+# Enter subjects
+set subj 	= ()
+
+# source_dir and dest_dir CAN be the same, but both must be specified
+set source_dir 	= 	 		# If this does not exist, script will fail
+set dest_dir 	= 			# If this does not exist, it will be created
+
+# log file will include conflicts, failed runs, missing runs/subjects, and what runs were completed successfully 
+set log_name	= dataset.log		# filename for log
+set log_dir	= 			# directory for log
+set ow_log	= no			# do you want to overwrite previous log?
+					# if set to 'no', the log from current iteration will be appended to previous one
+
+# Run Identifiers:
+# Each run needs a unique identifier in order to be located in the raw data directory
+# run identifiers must come from the name of the raw dicom directories, this is how the script will find the dicoms
+# runs with the same run parameters can be grouped together
+# to find scan parameters run:
+# > dicom_hdr image000001.dcm
+# and reference the columns below
+set runsA 	= ()
+set vA 		= 			# set number of volumes per run in $runsA
+set sA 		= 			# set number of slices per volume in $runsA; Group 0019 100a from dicom_hdr
+set trA 	= 			# set TR length (in msec) in runsA; Group 0018 0080
+  
+set runsB 	= ()
+set vB 		=  			# set number of volumes per run in $runsB
+set sB 		=  			# set number of slices per volume in $runsB; Group 0019 100a from dicom_hdr
+set trB 	=  			# set TR length (in msec) in runsB; Group 0018 0080
+
+# Set script options
+set overwrite 	= no #be careful!	# yes 	-> This will delete the ENTIRE bold directory and start anew
+					# no 	-> if conflicting file exists, step skipped
+set fs_setup 	= yes			# yes 	-> get directory structure set up to run recon-all, and create orig/001.mgz
+					# no 	-> skip freesurfer set up
+
+# known issues to be solved later:
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# Set up log file
+if (! -d $dest_dir) mkdir $dest_dir
+if (-d $log_dir) then
+	set log = $log_dir/$log_name
+else
+	echo " "
+	echo "Specified log directory does not exist, I will put log in:" ~
+	echo " "
+	set log = ~/$log_name
+endif
+if ($ow_log == yes && -f $log) \rm -f $log
+set now = `date +"%a %b %d %Y %r"`
+if (! -f $log) then
+	touch $log
+else
+	echo " " >> $log
+endif
+echo "=========================================================" >> $log
+echo "s1.dataset ran by $user on $now " >> $log
+echo "=========================================================" >> $log
+echo " " >> $log
+set nonomatch
+# Directory check...
+if (! -d $source_dir) then
+	echo " "
+	echo "Source directory does not exist, script failing..." | tee -a $log
+	echo "It's a trap! - Admiral Ackbar" | tee -a $log
+	echo " "
+	exit
+else
+	cd $source_dir
+endif
+# Now for the datasets...
+foreach s ($subj)
+	echo "========================================================================="
+	echo "========================================================================="
+	echo " "
+	echo "Current Subject: $s"
+	echo $s >> $log
+	echo "------" >> $log
+	echo " " >> $log
+# Look for subject directory and set up destination directory
+	if (! -d $s) then
+		echo " "
+		echo "Cannot find" $s | tee -a $log
+		echo " " >> $log
+	else
+# Remove previous bold directory if specified
+		if ($overwrite == yes && -d $dest_dir/$s/bold) then
+			echo "Removing previous files"
+			\rm -rf $dest_dir/$s/bold
+		endif
+		if (! -d $dest_dir/$s) mkdir $dest_dir/$s
+		if (! -d $dest_dir/$s/bold) mkdir $dest_dir/$s/bold
+		if ($fs_setup == yes) then
+			if (! -d $dest_dir/$s/mri) mkdir $dest_dir/$s/mri
+			if (! -d $dest_dir/$s/mri/orig) mkdir $dest_dir/$s/mri/orig
+		endif
+		set sub_dir = $dest_dir/$s/bold
+# c_runs = current, d_runs = done, m_runs = missing, f = failed
+		set c_runs = ()
+		set d_runs = ()
+		set m_runs = ()
+		set f_runs = ()
+# Enter dicom directory
+		if (! -d $s/`\ls $s | grep 2 | grep - | grep .` ) then
+			echo " "
+			echo "Cannot find dicom directory" | tee -a $log
+			echo " "
+			continue
+		else
+			cd $s/2*-*.*
+		endif
+# Copy anatomy
+		echo " "
+		echo "======================== Creating Anatomy Dataset ======================="
+		echo " "
+		set var = `\ls | egrep t1`
+		if ($#var == 0) then
+			echo "Cannot find anatomical directory"
+			set m_runs = ($m_runs T1)
+		else if ($#var < 3) then
+			if ($#var == 2) then
+				echo " "
+				echo "Conflict found: T1" | tee -a $log						
+				echo "  Using the force..."
+				echo " "
+				set r1 = `ls -l $var[1] | egrep -c '^-'`
+				set r2 = `ls -l $var[2] | egrep -c '^-'`
+				if ($r1 > $r2) then
+					echo "  Run used: $var[1]" | tee -a $log
+					echo " "
+					set dir = $var[1]
+				else
+					echo "  Run used: $var[2]" | tee -a $log
+					echo " "
+					set dir = $var[2]
+				endif
+			else if ($#var == 1) then
+				set dir = $var
+			endif
+			cd $dir
+			if ($fs_setup == yes) then
+				echo " "
+				echo "Creating 001.mgz for Freesurfer"
+				echo " "
+				if (! -f $dest_dir/$s/mri/orig/001.mgz) then
+					mri_convert image000001.dcm $dest_dir/$s/mri/orig/001.mgz
+					if (! -f $dest_dir/$s/mri/orig/001.mgz) then
+						echo "WARNING: mri_convert failed..." >> $log
+					endif
+				else
+					echo " "
+					echo "Freesurfer directory already exists..."
+					echo " "
+				endif
+			endif 
+			if (! -f $sub_dir/${s}_T1+orig.BRIK) then
+				to3d -prefix ${s}_T1 -session $sub_dir *.dcm
+				if (-f $sub_dir/${s}_T1+orig.BRIK) then
+					set c_runs = ($c_runs T1)
+				else
+					echo "WARNING:to3d failed on ${s}_T1+orig"
+					set f_runs = ($f_runs T1)
+				endif
+				cd ..
+			else 
+				echo "${s}_T1+orig already exists"
+				set d_runs = ($d_runs T1)
+				cd ..
+			endif
+		else if ($#var >= 3) then
+			echo "More that 2 conflicts in T1" | tee -a $log
+			set f_runs = ($f_runs T1)
+		endif
+# Copy functional Group A
+		echo " "
+		echo "================ Creating Functional Datasets in Group A ================"
+		if ($#runsA != 0) then
+			foreach r ($runsA)
+				echo " "
+				echo "Current Run: $r"
+				echo " "
+				set var = `\ls | egrep $r`
+				if ($#var == 0) then
+					echo "Cannot find" $r
+					echo " "
+					set m_runs = ($m_runs $r)
+				else
+					set dir = ()
+					if ($#var > 1) then
+						echo " "
+						echo "Conflict found: $r" | tee -a $log						
+						echo "  Using the force..."
+						echo " "
+						foreach v ($var)
+							cd $v
+							if (`ls -l *.dcm | egrep -c '^-'` == $vA) then
+								set dir = ($dir $v)
+							endif	
+							cd ..
+						end
+						if ($#dir == 1) echo "  Run used: $dir" | tee -a $log
+						echo " "
+					else
+						set dir = ($var)
+					endif
+					if ($#dir == 1) then
+						cd $dir
+						if (`ls -l *.dcm | egrep -c '^-'` == $vA) then
+							if (! -f $sub_dir/${s}_${r}+orig.BRIK) then
+								to3d -time:zt $sA $vA $trA FROM_IMAGE -prefix ${s}_$r -session $sub_dir *.dcm
+								if (-f $sub_dir/${s}_${r}+orig.BRIK) then
+									set c_runs = ($c_runs $r)
+								else
+									echo "WARNING: to3d failed on ${s}_${r}+orig"
+									set f_runs = ($f_runs $r)
+								endif
+							else
+								echo "${s}_${r}+orig already exists"
+								echo " "
+								set d_runs = ($d_runs $r)
+							endif
+						else
+							echo "WARNING $r only has `ls -l *.dcm | egrep -c '^-'` TRs, you specified $vA" | tee -a $log
+							set f_runs = ($f_runs $r)
+						endif
+						cd ..
+					else
+						echo " "
+						echo "  Conflicting good runs" | tee -a $log
+						echo " "
+						set f_runs = ($f_runs $r)
+					endif
+				endif
+			end
+		else
+			echo " "
+			echo "No runs in block A"
+			echo " "
+		endif
+# Copy functional Group B
+		echo " "
+		echo "================ Creating Functional Datasets in Group B ================"
+		if ($#runsB != 0) then
+			foreach r ($runsB)
+				echo " "
+				echo "Current Run: $r"
+				echo " "
+				set var = `\ls | egrep $r`
+				if ($#var == 0) then
+					echo "Cannot find" $r
+					echo " "
+					set m_runs = ($m_runs $r)
+				else
+					set dir = ()
+					if ($#var > 1) then
+						echo " "
+						echo "Conflict found: $r" | tee -a $log						
+						echo "  Using the force..."
+						echo " "
+						foreach v ($var)
+							cd $v
+							if (`ls -l *.dcm | egrep -c '^-'` == $vB) then
+								set dir = ($dir $v)
+							endif	
+							cd ..
+						end
+						if ($#dir == 1) echo "  Run used: $dir" | tee -a $log
+						echo " "
+					else
+						set dir = ($var)
+					endif
+					if ($#dir == 1) then
+						cd $dir
+						if (`ls -l *.dcm | egrep -c '^-'` == $vB) then
+							if (! -f $sub_dir/${s}_${r}+orig.BRIK) then
+								to3d -time:zt $sB $vB $trB FROM_IMAGE -prefix ${s}_$r -session $sub_dir *.dcm
+								if (-f $sub_dir/${s}_${r}+orig.BRIK) then
+									set c_runs = ($c_runs $r)
+								else
+									echo "WARNING: to3d failed on ${s}_${r}+orig"
+									set f_runs = ($f_runs $r)
+								endif
+							else
+								echo "${s}_${r}+orig already exists"
+								echo " "
+								set d_runs = ($d_runs $r)
+							endif
+						else
+							echo "WARNING $r only has `ls -l *.dcm | egrep -c '^-'` TRs, you specified $vA" | tee -a $log
+							set f_runs = ($f_runs $r)
+						endif
+						cd ..
+					else
+						echo " "
+						echo "  Conflicting good runs" | tee -a $log
+						echo " "
+						set f_runs = ($f_runs $r)
+					endif
+				endif
+			end
+		else
+			echo " "
+			echo "No runs in block B"
+			echo "Good, I was tired..."
+			echo " "
+		endif
+# Check for final files
+		if ($#d_runs != 0) echo "Previously exist:" $d_runs >> $log
+		if ($#m_runs != 0) echo "Missing:" $m_runs >> $log
+		if ($#f_runs != 0) echo "Failed:" $f_runs >> $log
+		if ($#c_runs == 0) set c_runs = "none"
+		echo "Datasets created:" $c_runs >> $log
+		echo " " >> $log
+	endif
+	cd $source_dir
+	echo " "
+end
+unset nonomatch
+echo " "
+echo "=================================================="
+echo "Datasets have been created, excited you are - Yoda"
+echo "=================================================="
+echo " "
+exit

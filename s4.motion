@@ -1,0 +1,393 @@
+#!/bin/tcsh
+# This script is intended for batch motion quality check.  You have a variety of options to print to a log, spread sheet readable file, and/or files that will be created
+# spread sheet will be a .csv file that can be imported into excel
+# 
+# spread sheet format:
+# Subject 	run(blank column)	# cen TRs 	% cen TRs 	mean FD 	max FD
+# ... 					...		... 		...		...
+# ... 					...		...		...		...
+#
+# Directory structure and naming:
+# It is assumed that files have been created/processed with s1.dataset and s3.rest/task_surf/vol_preproc
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+# Enter subjects
+set subj 	= ()
+
+# Set functional run identifier (i.e. TOM; BM; LL)
+# same ones used to grab the correct raw dicom files and to name individual runs in s1.dataset
+set runs 	= ()
+
+# Set data directory
+set data_dir	= 
+
+# Set motion log options
+set want_log 	= yes 			# yes/no to create a log
+set log_dir	= 
+set log_name	= motion.log
+set ow_log 	= no 			# yes/no to overwrite or append to previous log
+
+# set csv options
+set want_csv 	= yes 			# yes/no to create a .csv
+set csv_dir 	= 
+set csv_name	= motion.csv
+set ow_csv 	= no			# yes/no to overwrite or append to previous csv
+
+# set output options for log and/or csv
+set censor_test = yes			# test at different censor limits?
+set censor_mm 	= (0.5 1 2)		# in mm -> to test # of censored TRs and/or creation of censor files
+set censor_perc = yes 			# output percentage of TRs censored?
+set max_disp 	= yes 			# maximum frame displacement
+set mean_disp	= yes 			# mean frame displacement
+
+# set file output options to be used in 3dDeconvolve 
+set demean 	= no			# will write a file of demeaned motion parameters for regression
+set derivative 	= no			# will write a file of demeaned derivatives
+set censor_file	= no 			# create a separate censor file for each limit specified
+set enorm 	= no 			# euclidean norm derivative collapsed into one column to visualize motion as a time series
+
+set ow_1D 	= no			# yes -> will overwrite output file options
+					# no  -> previews files will be preserved, new ones will not be created
+
+# known issues to be solved later:
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# Print options specified
+if ($censor_test != yes && 					\
+	$censor_perc != yes && 					\
+	$mean_disp != yes && 					\
+	$max_disp != yes && 					\
+	$want_csv != yes && 					\
+	$demean != yes && 					\
+	$derivative != yes && 					\
+	$enorm != yes && 					\
+	$censor_file != yes) then
+	echo " "
+	echo "You didn't tell me to do anything!"
+	echo "Why hast thou forsaken me?!"
+	echo " "	
+	exit
+endif
+echo " "
+echo "Options specified:"
+if ($want_log == yes) echo "  Write to log"
+if ($censor_test == yes) echo "  Censor test at:" $censor_mm
+if ($mean_disp == yes) echo "  Mean frame displacement"
+if ($max_disp == yes) echo "  Max frame displacement"
+if ($want_csv == yes) echo "  Write .csv file with above metrics"
+if ($demean == yes) echo "  Write demeaned motion"
+if ($derivative == yes) echo "  Write derivatives"
+if ($censor_file == yes) echo "  Write censor files for 3dDeconvolve"
+if ($enorm == yes) echo "  Write enorm.1D file"
+# Data directory check and set up
+echo " "
+echo "Checking directories..."
+if (! -d $data_dir) then
+	echo
+	echo "Data directory does not exist, script failing..."
+	echo "It's a trap! - Admiral Ackbar"
+	echo
+	exit
+else
+	cd $data_dir
+endif
+alias calc 'awk "BEGIN{ print \!* }" '
+set perc_mm = ($censor_mm)
+### Log set up ###
+# Set up log file name and location
+if ($want_log == yes) then
+	if (-d $log_dir) then
+		set log = $log_dir/$log_name
+	else
+		echo " "
+		echo "Specified log directory does not exist, I will put log in:" ~
+		set log = ~/$log_name
+	endif
+# If specified, delete previous log file
+	if ($ow_log == yes && -e $log) then
+		echo " "
+		echo "Removing previous log..."
+		\rm -f $log
+	endif
+# Create log header
+	if (! -f $log) then
+		touch $log
+	else
+		echo " " >> $log
+	endif
+	set now = `date +"%a %b %d %Y %r"`
+	echo "========================================================" >> $log
+	echo "s4.motion ran by $user on $now" >> $log
+	echo "========================================================" >> $log
+	echo " " >> $log
+endif
+### CSV set up ###
+# Set up .csv file name and location
+if ($want_csv == yes) then
+	if (-d $csv_dir) then
+		set csv = $csv_dir/$csv_name
+	else
+		echo " "
+		echo "Specified .csv directory does not exist, I will put .csv in:" ~
+		set csv = ~/$csv_name
+		set csv_dir = ~
+	endif
+# If specified, delete previous .csv file
+	if ($ow_csv == yes && -e $csv) then
+		echo " "
+		echo "Removing previous csv"
+		\rm -f $csv
+	endif
+# Initialize temp files needed for .csv, if needed
+	if (! -e $csv) then
+		touch $csv
+		echo "Subject" > $csv_dir/rm.sub
+		foreach r ($runs)
+			echo $r > $csv_dir/rm.${r}
+			if ($censor_test == yes && $#censor_mm != 0) then
+				foreach c ($censor_mm)
+					echo ${c}mm > $csv_dir/rm.${r}.${c}mm
+				end
+			endif
+			if ($censor_perc == yes && $#perc_mm != 0) then
+				foreach c ($perc_mm)
+					echo "%" > $csv_dir/rm.perc_${r}.${c}mm
+				end
+			endif
+			if ($mean_disp == yes) then
+				echo "Mean" > $csv_dir/rm.${r}.mean
+			endif
+			if ($max_disp == yes) then
+				echo "Max" > $csv_dir/rm.${r}.max
+			endif
+		end
+	endif
+endif
+# Set overwrite options for .1D files
+	if ($ow_1D == yes) then
+		set ow = "-overwrite"
+	else
+		set ow = ""
+	endif
+endif
+# Subject loop
+foreach s ($subj)
+	echo " "
+	echo "========================================================================="
+	echo "========================================================================="
+	echo " "
+	echo $s
+	echo " "
+# Check if subject exists
+	if (! -d $s/bold) then
+		echo "Cannot find $s"
+		if ($want_log == yes) then
+			echo "========== $s ==========" >> $log
+			echo " " >> $log
+			echo "WARNING: Cannot find $s" >> $log
+			echo " " >> $log
+		endif
+		echo "Next subject..."
+		continue
+	else
+		cd $s/bold
+# Cycle through runs, grab ones that exist, take note of ones that do not
+		set m_runs = ()
+		set c_runs = ()
+		foreach r ($runs)
+			if (! -e ${s}_${r}.MoPar.1D) then
+				set m_runs = ($m_runs $r)
+			else
+				set c_runs = ($c_runs $r)
+			endif
+		end
+		if ($#m_runs != 0 && $want_log == no) then
+			echo " "
+			echo "WARNING: missing" $m_runs "MoPar.1D file!"
+			echo " "
+		endif
+	endif
+# Log metrics
+	if ($want_log == yes) then
+		echo "Generating log..."
+		echo "========== $s ==========" >> $log
+		echo " " >> $log
+		if ($#m_runs != 0) then
+			echo "Missing:" $m_runs >> $log
+			echo " " >> $log
+		endif
+# Current run loop
+		foreach r ($c_runs)
+			echo $r >> $log
+			echo "  $r"
+			echo --- >> $log
+# Censor count test
+			if ($censor_test == yes) then
+				foreach t ($censor_mm)
+					echo "Censored TRs at ${t}mm:" 			\
+					`1d_tool.py 					\
+						-infile ${s}_$r.MoPar.1D 		\
+						-quick_censor_count $t` >> $log
+# % of censored TRs
+					if ($censor_perc == yes) then
+						foreach c ($perc_mm)
+							if ($t == $c) then
+								set tot_tr = `1d_tool.py		\
+									-infile ${s}_$r.MoPar.1D 	\
+									-show_tr_run_counts trs`
+								set cen_tr = `1d_tool.py 		\
+									-infile ${s}_$r.MoPar.1D 	\
+									-quick_censor_count $c`
+								echo "  % censored:" `calc ($cen_tr / $tot_tr) * 100` >> $log
+							endif
+						end
+					endif
+				end
+			endif
+# Mean displacement test
+			if ($mean_disp == yes) then
+				echo "Mean Frame Displacement:" 			\
+				`@1dDiffMag ${s}_$r.MoPar.1D` >> $log
+			endif
+# Max displacement test
+			if ($max_disp == yes) then
+				set temp = `1d_tool.py 					\
+						-infile ${s}_$r.MoPar.1D 		\
+						-show_max_displace`
+				echo "Maximum Displacement:" $temp[3] >> $log
+			endif
+			echo " " >> $log
+		end
+		echo " "
+	endif
+# Create motion parameters in temp files
+	if ($want_csv == yes) then
+		echo "Writing csv..."
+		echo $s >> $csv_dir/rm.sub
+		foreach r ($runs)
+			echo " " >> $csv_dir/rm.${r}
+			if (-f ${s}_${r}.MoPar.1D) then
+				echo "  $r"
+				if ($censor_test == yes) then
+					foreach c ($censor_mm)
+						echo `1d_tool.py 			\
+							-infile ${s}_$r.MoPar.1D 	\
+							-quick_censor_count $c` >> $csv_dir/rm.${r}.${c}mm
+					end
+				endif
+				if ($censor_perc == yes) then
+					foreach c ($perc_mm)
+						set tot_tr = `1d_tool.py		\
+							-infile ${s}_$r.MoPar.1D 	\
+							-show_tr_run_counts trs`
+						set cen_tr = `1d_tool.py 		\
+							-infile ${s}_$r.MoPar.1D 	\
+							-quick_censor_count $c`
+						echo `calc ($cen_tr / $tot_tr) * 100` >> $csv_dir/rm.perc_${r}.${c}mm
+					end
+				endif
+				if ($mean_disp == yes) then
+					echo `@1dDiffMag ${s}_$r.MoPar.1D` >> $csv_dir/rm.${r}.mean		
+				endif
+				if ($max_disp == yes) then
+					set temp = `1d_tool.py 				\
+							-infile ${s}_$r.MoPar.1D 	\
+							-show_max_displace` 
+					echo $temp[3] >> $csv_dir/rm.${r}.max
+				endif
+			else
+# If missing a run, still have a placeholder on spreadsheet
+				if ($censor_test == yes) then
+					foreach c ($censor_mm)
+						echo "-" >> $csv_dir/rm.${r}.${c}mm
+					end
+				endif
+				if ($censor_perc == yes) then
+					foreach c ($perc_mm)
+						echo "-" >> $csv_dir/rm.perc_${r}.${c}mm
+					end
+				endif
+				if ($mean_disp == yes) then
+					echo "-" >> $csv_dir/rm.${r}.mean		
+				endif
+				if ($max_disp == yes) then
+					echo "-" >> $csv_dir/rm.${r}.max
+				endif
+			endif
+		end
+		echo " "
+	endif
+# Write output file options
+	if ($demean == yes || $derivative == yes || $enorm == yes || $censor_file == yes) then
+		echo "Writing .1D files..."
+	endif
+	foreach r ($c_runs)
+# Write demean
+		if ($demean == yes) then
+			1d_tool.py 							\
+				-infile ${s}_$r.MoPar.1D 				\
+				-demean $ow 						\
+				-write ${s}_$r.MoPar_demean.1D
+		endif
+# Write derivative
+		if ($derivative == yes) then
+			1d_tool.py 							\
+				-infile ${s}_$r.MoPar.1D 				\
+				-derivative $ow						\
+				-write ${s}_$r.MoPar_derv.1D
+		endif
+# Write enorm file
+		if ($enorm == yes) then	
+			1d_tool.py 							\
+				-infile ${s}_$r.MoPar.1D				\
+				-derivative $ow						\
+				-collapse_cols euclidean_norm 				\
+				-write ${s}_$r.enorm.1D
+		endif
+# Write censor files
+		if ($censor_file == yes) then
+			foreach c ($censor_mm)
+				1d_tool.py 						\
+					-infile ${s}_$r.MoPar.1D 			\
+					-derivative $ow					\
+					-collapse_cols euclidean_norm 			\
+					-moderate_mask -$c $c 				\
+					-write_censor ${s}_$r.censor${c}mm.1D
+			end
+		endif
+	end
+	cd $data_dir
+end
+# Build the final csv file
+if ($want_csv == yes) then
+	set fin = (rm.sub)
+	foreach r ($runs)
+		set fin = ($fin rm.${r})
+		if ($censor_test == yes) then
+			foreach c ($censor_mm)
+				set fin = ($fin rm.${r}.${c}mm)
+				if ($censor_perc == yes) then
+					foreach pc ($perc_mm)
+						if ($c == $pc) set fin = ($fin rm.perc_${r}.${pc}mm)
+					end
+				endif
+			end
+		endif
+		if ($mean_disp == yes) set fin = ($fin rm.${r}.mean)
+		if ($max_disp == yes) set fin = ($fin rm.${r}.max)
+	end
+	cd $csv_dir
+	paste -d, $fin >> $csv
+	\rm -f rm.*
+endif
+echo " "
+echo "===================================================="
+echo "Uuuuuuurg Ahhhhrrrr Uhrr Ahhhhrr Aaarhg! - Chewbacca"
+echo "===================================================="
+echo " "
+exit

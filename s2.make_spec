@@ -1,0 +1,107 @@
+#!/bin/tcsh
+# Create SUMA mesh from Freesurfer datasets
+# Script assumes recon-all has been run and that there is a /surf and /mri directory in the subject's directory
+# SUMA directory will be created in $data_dir/$subj/ and then you have the option to move it
+
+# Enter subjects
+set subj 	= ()
+
+# Data Directory (where all subjects and their freesurfer directories live)
+set data_dir 	= 
+
+# Log file will include the success or failure of @SUMA_Make_Spec_FS for each iteration.
+# note that it does not guarantee that the @SUMA_Make_Spec_FS command worked completely, alignment should be checked
+set log_name 	= make_spec.log
+set log_dir	= 
+set ow_log	= no			# do you want to overwrite previous log? if set to 'no', it will append to previous
+
+set move_suma	= no			# move the SUMA directory
+set suma_dir	= 			# where to move? if move_suma == no, you can leave this blank
+
+set ow_suma	= no #be careful!	# this will delete the SUMA directory and begin anew
+
+# known issues to be solved later:
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# Set up log file
+if (-d $log_dir) then
+	set log = $log_dir/$log_name
+else
+	echo " "
+	echo "Specified log directory does not exist, I will put log in:" ~
+	echo " "
+	set log = ~/$log_name
+endif
+if ($ow_log == yes && -f $log) \rm -f $log
+set now = `date +"%a %b %d %Y %r"`
+if (! -f $log) then
+	touch $log
+else
+	echo " " >> $log
+endif
+echo "=========================================================" >> $log
+echo "s2.make_spec ran by $user on $now " >> $log
+echo "=========================================================" >> $log
+echo " " >> $log
+# Directory check...
+if (! -d $data_dir) then
+	echo " "
+	echo "Study directory does not exist, script failing..." | tee -a $log
+	echo "It's a trap! - Admiral Ackbar" | tee -a $log
+	echo " "
+	exit
+else
+	cd $data_dir
+endif
+if ($move_suma == yes) then
+	if (! -d $suma_dir) then
+		echo " "
+		echo "You scruffy looking nerf-herder!"
+		echo "The directory where you wanted me to move SUMA doesn't exist."
+		echo "SUMA directory cannot be moved"
+		echo " "
+		set move_suma = no
+	endif
+endif 
+# Subject loop
+foreach s ($subj)
+	echo " "
+	echo "========================================================================="
+	echo " "
+	echo "Current Subject: $s"
+	echo " "
+	if (! -d $s) then
+		echo "Cannot find subject" $s | tee -a $log
+	else
+		cd $s
+		if ($ow_suma == yes) then
+			echo " "
+			echo "Removing previous SUMA directory..."
+			echo " "
+			\rm -rf SUMA
+		endif
+		if (-d SUMA) then
+			echo "SUMA directory for $s already exists" | tee -a $log
+		else
+			@SUMA_Make_Spec_FS -sid $s
+			if (-d SUMA && `ls -l SUMA | egrep -c '^-'` == 133) then
+				echo "SUMA directory created for $s" | tee -a $log
+				if ($move_suma == yes) mv SUMA $suma_dir/$s 
+			else 
+				echo "WARNING: @SUMA_Make_Spec_FS failed for $s" | tee -a $log
+			endif
+		endif
+	endif
+	cd $data_dir
+end
+echo " "
+echo "===================================="
+echo "That's no moon, that's a MESH BRAIN!"
+echo "===================================="
+echo " "
+exit

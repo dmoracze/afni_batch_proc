@@ -1,0 +1,289 @@
+2/1/15
+======
+s1.dataset
+	- alias 'ls -l' problem fixed
+	- added individual specifications for log_name and log_dir
+	- if log_dir does not exist, script will put login home directory
+	- log can now be put in $dest_dir, even if $dest_dir doesn't exist yet (it will be created)
+	- added runs created to log, to keep a record of what has been created when
+	- clean up
+
+s2.make_spec
+	- if log_dir does not exist, script will put login home directory
+
+2/3/15
+======
+s3.task_surf_preproc && s3.task_surf_preproc
+	- final run check will print runs processed and runs failed to log
+
+2/17/15
+=======
+s1.dataset
+	- changed format of date in log to 12 hour format
+s2.make_spec
+	- changed format of date in log to 12 hour format
+s3.rest_surf_preproc
+	- added x1D option to print a .1D of the design matrix
+	- added quality check log
+		- check # of censored TRs @ different thresholds
+		- mean frame displacement
+		- max displacement
+		- will only write to quality check if currently being processed
+		- quality check log will be appended to, processes as many times as you like, all will be kept
+
+s3.task_surf_preproc && s3.task_surf_preproc
+	- changed format of date in log to 12 hour format
+	- script will print runs processed in current iteration properly to log
+		(before it would print runs that already existed as processed, unless overwrite == yes)
+	- cleaned up log file
+
+2/22/15
+=======
+s3.rest_surf_preproc
+	- made quality check optional
+s3.task_surf_preproc
+	- added quality check option as previously mentioned in s3.rest_surf_preproc
+s3.rest_surf_preproc && s3.task_surf_preproc
+	- added the option to only run quality check measures
+		if overwrite == no and qual == yes, the script will only run quality check on runs that currently exist and are fully preprocessed, this way you can test certain censor limits quickly
+	- script will now print runs that have already been processed to log, just so you know that it saw them and tagged them as already done
+	- cleaned up documentation
+
+2/24/15
+=======
+s3.rest_surf_preproc && s3.task_surf_preproc
+	- fixed error in quality log
+		before it would print the log title (with date) for each subject, now it only does it once
+
+2/25/15
+=======
+s1.dataset
+	- cleaned up script flow and log output
+	- option to overwrite log
+s2.make_spec
+	- cleaned up script flow
+	- option to overwrite log
+s3.rest_surf_preproc && s3.task_surf_preproc
+	- added ability overwrite log file
+	- quality log removed and transferred to its own script (see below)
+	- cleaned up output and script flow
+s4.motion created (NEW SCRIPT)
+	- this can: 
+		show # of censored TRs @ different limits
+		show mean/max displacement
+		print enorm 1D file to visualize motion as a time series
+		print separate censor files for the specified censor limits
+
+3/10/15
+=======
+s1.dataset
+	- script will tell you if the # of TRs in the run's dicom directory is different than the # you specified
+	- script will print the names of failed runs to log
+
+3/11/15
+=======
+s2.make_spec
+	- The Successful @SUMA command reported in the log is no longer contingent solely on the creation of a SUMA directory.  
+		In order for the command to be reported successful There needs to be a SUMA directory && 133 files within that directory (the number of files @SUMA_Make_Spec creates upon successful completion)
+	- You can now specify a directory to move the SUMA directory to, script will check for its existence
+	- added an overwrite option for the SUMA directory
+all scripts
+	- added a small section for known issues and features to be added later
+s.update (NEW SCRIPT)
+	- this will copy the newest versions of the scripts into either the present working directory or a specified path
+	- usage takes either no arguments or a path argument, no argument goes to pwd, a path argument will copy to a specified path
+	- it will prompt you to overwrite or not
+
+3/13/15
+=======
+all scripts
+	- clean up stout
+
+3/15/15
+=======
+s.update
+	- added individual script specifications
+		specify one or more scripts to selectively update, or use -all to update all
+	- added option -dir <directory>
+		to specify a directory, if none is specified, scripts will be updated to pwd
+
+3/17/15
+=======
+s3.task_vol_preproc (NEW SCRIPT)
+	- volume preprocessing (took out motion quality)
+s4.motion
+	- added options to write demeaned and derivatives of motion
+s3.task_surf_preproc
+	- took out motion parameter options (use s4.motion)
+s.update
+	- added s3.task_vol_preproc
+
+3/25/15
+=======
+s1.dataset
+	- altered the \rm command to escape possible rm aliases
+s2.make_spec
+	- altered the \rm command to escape possible rm aliases
+s3.task_vol_preproc
+	- altered the \rm command to escape possible rm aliases
+s3.rest_vol_preproc
+	- altered the \rm command to escape possible rm aliases
+	- changed volume registrations steps to reflect afni_proc (also as in s3.task_vol_preproc)
+	- all epi datasets will be registered to same base
+	- incorporated demeaned MoPar into script (instead of raw)
+	- moved calculate motion regressors step to right before deconvolve
+s4.motion
+	- altered the \rm command to escape possible rm aliases
+
+3/30/15
+=======
+s3.task_vol_preproc
+	- created full brain mask of all epi runs
+	- changed 3dmerge to 3dBlurInMask to only smooth within brain mask, voxels outside mask will be preserved
+
+4/1/15
+======
+s5.decon (NEW SCRIPT)
+	- originally written for the live reward task (will have to be altered for others)
+	- choice between normal linear regression and beta series
+s.update
+	- added s5.decon option
+
+4/29/15
+=======
+s3.task_surf_preproc
+	- changed volreg step to match other scripts and afni_proc.py pipeline
+
+5/20/15
+=======
+s1.dataset
+	- can now deal with:
+		- 2 conflicting t1 runs, move than 2 it will skip and print the conflict to log
+		- multiple conflicting functional runs, it will choose the run that equals the # of volumes you specified in the preamble
+		- if there are 2 functional runs with the correct # of dicoms, it will skip and note it in the log
+	- now prints the user that ran the script to the log
+	- updated documentation in preamble
+
+5/21/15
+=======
+s2.make_spec
+	- now prints the user that ran the script to the log
+	- cleaned up documentation in preamble
+
+5/22/15
+=======
+s3.task_vol_preproc
+	- added option to specify which run and volume to register everything to, your choice will be printed in the log
+	- added a quality check to skip over FullMask step if it already exists
+
+5/26/16
+=======
+s3.task_vol_preproc
+	- add clean_output option to remove all unneeded previous steps for a cleaner and smaller output
+	- script will output which steps failed to the log
+	- added option want_tsnr, this will give you a tsnr dataset based on pb02.volreg and a mean TSNR.out for each run
+
+5/27/15
+=======
+s3.task_vol_preproc
+	- change -1D_matrix filename to be consistent with what cat_matvec wants during the volreg step 
+	- added skip_bad_motion where you can specify (for computational purposes) to skip runs with bad motion.  If skip_bad_motion = yes, you need to specify the limit in percentage and the censor limit parameters
+	- cleaned up log output and documentation
+
+5/28/15
+=======
+s3.task_vol_preproc
+	- for skip_bad_motion = yes, percent TRs censored will also be output to log
+s3.rest_surf_preproc
+	- now prints the user that ran the script to the log
+	- cleaned up log output
+	- change -1D_matrix filename to be consistent with what cat_matvec wants during the volreg step 
+	- took out -Xjpg from nuisance regression, not needed
+
+6/1/15
+======
+s1.dataset
+	- will skip runA and runB block if there are no identified runs
+	- changed documentation in preamble to state that TR length must be given in seconds, also changed terminology from "number of volumes in a run" to "number of TRs in a run" ... not sure why I didn't do this originally
+s3.task_surf_preproc
+	- now prints the user that ran the script to the log
+	- cleaned up log output and documentation
+	- added skip_bad_motion where you can specify (for computational purposes) to skip runs with bad motion.  If skip_bad_motion = yes, you need to specify the limit in percentage and the censor limit parameters
+	- for skip_bad_motion = yes, percent TRs censored will also be output to log
+	- change -1D_matrix filename to be consistent with what cat_matvec wants during the volreg step 
+	- added option want_tsnr, this will give you a tsnr dataset based on pb02.volreg and a mean TSNR.out for each run
+	- script will output which steps failed to the log
+s3.rest_surf_preproc
+	- changed 1dBport for to bandpass all in one step during regression (takes a LOT longer but nuisance regression and bandpass is all done in one step, less interpolation)
+
+6/2/15
+======
+s.update
+	- added -h to show documentation of which scripts and options you can request
+	- if no options are given, script will tell you and print the help documentation
+	- added s5.decon to the scripts that can be requested
+	- updated documentation in preamble
+
+6/4/15
+======
+s1.dataset
+	- added the ability to create freesurfer file structure and orig file for recon-all
+	- added FROM_IMAGE to read slice timing from image, better for switching between multiband and classic
+s3.task_col_preproc
+	- added skip_slice option to skip slice time correction for multiband data
+s3.task_surf_preproc
+	- added skip_slice option to skip slice time correction for multiband data
+s3.rest_surf_preproc
+	- added skip_slice option to skip slice time correction for multiband data
+
+6/5/15
+======
+s3.rest_surf_preproc
+	-added 3dTproject for nuisance regression for faster processing speeds
+	-removed jobs option in preamble because speed isn't an issue anymore
+
+6/8/15
+======
+s5.decon
+	- much less hard coded, more flexible for other studies
+
+6/13/15
+=======
+s4.motion
+	- added ow_log option (long overdue)
+	- updated preamble
+	- added overwrite option for output files (censor, enorm, demean, derv)
+
+6/24/15
+=======
+s4.motion
+	- added .csv output option
+	- reordered some set variables in the preamble for clarity's sake
+	- added set noclobber so it won't fail if a file doesn't exist for the log or csv
+
+6/26/15
+=======
+s1.dataset
+	- cleaned up log output
+s2.make_spec
+	- cleaned up log output
+s3.(all)
+	- cleaned up log output
+s4.motion
+	- fixed bugs relating to missing runs
+
+7/15/15
+=======
+s3.(all)
+	- added option $resolution to specify what resolution you want your functional data to be warped to
+	- cleaned up skip_slice option, will check if the file exists first
+
+7/23/15
+=======
+s1.dataset
+	- added columns of dicom_hdr that you need for scan parameters
+
+8/14/15
+=======
+s3.task_surf_preproc
+	- script looks for the correct file after the smoothing step

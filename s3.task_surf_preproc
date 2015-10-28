@@ -1,0 +1,507 @@
+#!/bin/tcsh
+# This script will complete all functional preprocessing and send data to surface and prepare for regression
+# Steps include: Slice time correction, Motion correction, Co-registration, Vol2Surf, Intensity normalization, Surface smoothing
+#
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+# Script assumes that T1+orig and functional runs +orig are in the data directory
+# Also assumes that @SUMA_Make_Spec_FS has been run for surface files
+#
+# Assumed directory structure:
+# data_dir/
+#	subject_ID/
+#		bold/
+#		   subID_T1_+orig
+#		   subID_run_+orig
+# SUMA_dir/
+#	subject_ID/
+#		SUMA/
+#
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+# Enter subjects
+set subj 		= ()
+
+# Set functional run identifier (i.e. TOM BM LL)      !! Do not enter anatomical !!
+# same ones used to grab the correct raw dicom files and to name individual runs in s1.dataset
+set runs 		= ()
+
+# Set directories for where the data and SUMA live, they can be one in the same but you need to specify both
+set data_dir 		= 
+set SUMA_dir 		= 	
+
+# log file will contain errors and a history of runs processed
+set log_name		= 
+set log_dir		= 
+set ow_log		= no		# do you want to overwrite previous log?
+					# if no, script will append to the previous log file
+# Set processing Options
+set skip_slice 		= no 		# yes 	-> skip slice time correction (for multiband data)
+set default_vol 	= yes		# yes 	-> default volreg aligns everything to the 1st volume of the 1st run
+# if no:				# no 	-> allows you to specify what run and volume below
+set volreg_run		=		# name of run that contains the volume you want to register everything to (can be blank if default.vol == yes)
+set volreg_vol 		=		# volume number to register everything to (index begin at 0), (can be blank if default.vol == yes)
+
+set resolution 		= 3 		# resolution (in mm) that you want the functional grid (used in co-registration)
+set fwhm 		= 5		# FWHM blur (in mm) for surface smoothing
+
+# Set script options
+set overwrite 		= no		# yes 	-> delete conflicting files and create anew
+					# no 	-> if conflicting file exists, conflict will be printed and proc step skipped 
+set clean_output 	= yes		# yes 	-> clean output, only essential final files will be saved
+					# no 	-> all files will be saved, can be used for troubleshooting
+set want_tsnr 		= no 		# yes 	-> will output a tsnr dataset based on the volreg step, and TSNR.$run.out which = mean TSNR text file
+set skip_bad_motion	= no 		# yes 	-> calculate percent of censored TRs based on below parameters and will skip 
+# if yes 					   if above the threshold
+set censor 		= 		# censor limit (in mm) to test motion
+set bad_percent 	= 		# motion threshold, runs with percent TRs censored > bad_percent will be skipped
+
+
+# known issues to be solved later:
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# Set up log file
+if (-d $log_dir) then
+	set log = $log_dir/$log_name
+else
+	echo " "
+	echo "Specified log directory does not exist, I will put log in:" ~
+	echo " "
+	set log = ~/$log_name
+endif
+if ($ow_log == yes && -f $log) rm -f $log
+set now = `date +"%a %b %d %Y %r"`
+if (! -f $log) then
+	touch $log
+else
+	echo " " >> $log
+endif
+echo "==================================================================" >> $log
+echo "s3.task_surf_preproc ran by $user on $now " >> $log
+echo "==================================================================" >> $log
+echo " " >> $log
+# Directory check
+if (! -d $data_dir && ! -d $SUMA_dir) then
+	echo " "
+	echo "Data directory and/or SUMA directory does not exist, script failing..." | tee -a $log
+	echo "It's a trap! - Admiral Ackbar" | tee -a $log
+	echo " "
+	exit
+else
+	cd $data_dir
+endif
+# prepare file name for clean output
+if ($clean_output == yes) then
+	set o = "rm."
+else if ($clean_output == no) then
+	set o = ""
+else
+	echo " "
+	echo "WARNING: clean_out option $clean_output not understood, setting to no" | tee -a $log
+	echo " "
+	set o = ""
+endif
+echo " "
+set nonomatch
+# Subject loop
+foreach s ($subj)
+	echo "========================================================================="
+	echo "========================================================================="
+	echo " "
+	echo "Current Subject: $s"
+	echo " "
+# Can I find the current subject?
+	echo " " >> $log
+	echo $s >> $log
+	echo "------" >> $log
+	if (! -d $s/bold) then
+		echo "Cannot find subject $s" | tee -a $log
+		echo "Next subject..."
+	else
+		cd $s/bold
+# Cycle through functional runs and grab runs that exist for current subject
+#m = missing, t = temp, d = done (already), c = current
+		set m_runs = ()
+		set t_runs = ()
+		set d_runs = () 
+		set c_runs = ()
+		foreach r ($runs)
+			if (! -f ${s}_${r}+orig.HEAD) then
+				echo "Missing run: $r"
+				echo " "
+				set m_runs = ($m_runs $r)
+			else
+				set t_runs = ($t_runs $r)
+			endif
+		end
+		if ($#m_runs != 0) echo "Missing:" $m_runs >> $log
+# remove conflicting files, take note of files already processed, and create a list of current files to process
+		if ($overwrite == yes) then
+			echo " "
+			echo "Removing previous files"
+			echo " "
+			foreach r ($t_runs)
+				rm -f *SurfVol* *an2ep* *aseg* *mLV* *mWM* *band* *"$r".pb* *"$r".MoPar* *"$r".censor* *T1_ns* *T1_al* *TSNR* *aff12* *rm* *warp* *A2E* *shft*
+			end
+		endif
+		foreach r ($t_runs)
+			if (-f ${s}_$r.pb05.lh.smooth.niml.dset && -f ${s}_$r.pb05.rh.smooth.niml.dset) then
+				set d_runs = ($d_runs $r)
+			else
+				set c_runs = ($c_runs $r)
+			endif
+		end
+		if ($#d_runs != 0) then
+			echo "Subject ${s}, runs: ${d_runs} already exist, I won't waste your time"
+			echo "Already exist:" $d_runs >> $log
+		endif
+# Process current runs, if there are any
+		if ($#c_runs != 0) then
+# Volume based functional preprocessing
+# Slice time correction
+			if ($skip_slice == no) then
+				echo " "
+				echo "========================= Slice Time Correction ========================="
+				foreach r ($c_runs)
+					echo " "
+					echo "Current run: $r"
+					echo " "
+					if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
+						3dTshift 							\
+							-slice 1 -tpattern alt+z2 				\
+							-prefix ${o}${s}_$r.pb01.Tshift 			\
+							${s}_$r+orig
+						if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
+							echo "slice timing, run: $r failed..." >> $log
+						endif
+					else
+						echo "${s}_$r.pb01.Tshift already exists"
+					endif
+				end
+			else if ($skip_slice == yes) then
+				echo " "
+				echo "Skipping slice time correction because you told me to..."
+				echo " "
+				if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
+					foreach r ($c_runs)
+						3dcopy ${s}_$r+orig ${o}${s}_$r.pb01.Tshift+orig.HEAD
+					end
+				else
+					echo "${s}_$r.pb01.Tshift already exists"
+				endif
+			else 
+				echo " "
+				echo "Slice time option $skip_slice not understood, help me help you"
+				echo "Set skip_slice to yes/no"
+				echo " "
+				echo "failing..."
+				echo " "
+				exit
+			endif
+			echo "skip_slice = $skip_slice" >> $log
+			echo " "
+			echo "=========================== Volume Registration ==========================="
+			echo " "
+# Prepare proper volume for registration
+			if ($default_vol == yes) then
+				set v_run = ${o}${s}_$c_runs[1].pb01.Tshift+orig
+				set v_vol = 0
+			else if ($default_vol == no) then
+				set v_run = ${o}${s}_$volreg_run.pb01.Tshift+orig
+				set v_vol = $volreg_vol
+			else
+				echo " "
+				echo "Default option $default_vol not understood, using defaults..." | tee -a $log
+				echo " "
+				set v_run = ${o}${s}_$c_runs[1].pb01.Tshift+orig
+				set v_vol = 0
+			endif
+			echo "base: ${v_run}:${v_vol}" >> $log
+# Align anatomy to epi base
+			if (! -f ${s}_T1_ns+orig.HEAD) then
+				align_epi_anat.py 							\
+					-anat2epi -anat ${s}_T1+orig 					\
+					-save_skullstrip 						\
+					-suffix _al 							\
+					-epi $v_run 							\
+					-epi_strip 3dAutomask 						\
+					-epi_base $v_vol -volreg off -tshift off
+				if (! -f ${s}_T1_ns+orig.HEAD) then
+					echo "align_epi_anat failed..." >> $log
+				endif
+			else
+				echo "${s}_T1_ns already exists"
+			endif
+# Put everything into the same space 
+			foreach r ($c_runs)
+				echo " "		
+				echo "Current run: $r"
+				echo " "
+				if (! -f ${o}${s}_$r.pb02.volreg+orig.HEAD) then
+# Align all functional slices to same base and save transformations
+					3dvolreg 							\
+						-base $v_run"[$v_vol]"  				\
+						-1Dfile ${s}_$r.MoPar.1D 				\
+						-prefix rm.$r.volreg 					\
+						-1Dmatrix_save ${o}${s}_$r.volreg.aff12.1D 		\
+						-zpad 1 	 					\
+						${o}${s}_$r.pb01.Tshift+orig
+# Create an extent mask of base dataset
+					3dcalc 								\
+						-overwrite -a ${o}${s}_$r.pb01.Tshift+orig 		\
+						-expr 1 -prefix rm.epi.all1
+# Cat transformation parameters to apply to epi
+					cat_matvec -ONELINE 						\
+						${s}_T1_al_mat.aff12.1D -I 				\
+						${o}${s}_$r.volreg.aff12.1D > ${o}${s}_$r.warp.mat.1D
+# Apply transformation parameters to epi datasets (create temporary files until process is complete)
+					3dAllineate 							\
+						-base ${s}_T1_ns+orig 					\
+						-input ${o}${s}_$r.pb01.Tshift+orig 			\
+						-1Dmatrix_apply ${o}${s}_$r.warp.mat.1D 		\
+						-mast_dxyz $resolution 					\
+						-prefix rm.$r.nomask
+# Apply transformations to mask as well
+					3dAllineate 							\
+						-base ${s}_T1_ns+orig 					\
+						-input rm.epi.all1+orig 				\
+						-1Dmatrix_apply ${o}${s}_$r.warp.mat.1D 		\
+						-mast_dxyz $resolution -final NN -quiet 		\
+						-prefix rm.$r.all1
+# extents intersection
+					3dTstat 							\
+						-min -prefix rm.$r.min 					\
+						rm.$r.all1+orig
+				else
+					echo "${s}_$r has already been aligned"
+				endif
+			end
+			foreach r ($c_runs)
+				if (! -f ${o}${s}_$r.pb02.volreg+orig.HEAD) then
+					3dcalc 								\
+						-a rm.$r.nomask+orig 					\
+						-b rm.$r.all1+orig	 				\
+						-expr 'a*b' 						\
+						-prefix ${o}${s}_$r.pb02.volreg
+					if (! -f ${o}${s}_$r.pb02.volreg+orig.HEAD) then
+						echo "volreg, run: $r failed..." >> $log
+					endif
+				else
+					echo " "
+					echo "${s}_$r.pb02.volreg+orig already exists"
+					echo " "
+				endif
+			end
+# test and skip bad motion if you want me to
+			if ($skip_bad_motion == yes) then
+				alias calc 'awk "BEGIN{ print \!* }" '
+				set bm_runs = ()
+				set gm_runs = ()
+				set bm_perc = ()
+				foreach r ($c_runs)
+					set tot_tr = `1d_tool.py -infile ${s}_$r.MoPar.1D -show_tr_run_counts trs`
+					set cen_tr = `1d_tool.py -infile ${s}_$r.MoPar.1D -quick_censor_count $censor`
+					set perc = `calc int(($cen_tr / $tot_tr) * 100)`
+					if ($perc >= $bad_percent) then
+						set bm_runs = ($r $bm_runs)
+						set bm_perc = ($perc $bm_perc)
+					else
+						set gm_runs = ($r $gm_runs)
+					endif
+				end
+				if ($#bm_runs != 0) then
+					echo "Skipped due to motion with ${censor}mm censor:" >> $log
+					set i = 1
+					set n = $#bm_perc
+					while ($i <= $n)
+						echo "  ${bm_runs[$i]}: ${bm_perc[$i]}% censored" >> $log
+						@ i++
+					end
+				endif
+				set c_runs = ($gm_runs)
+				if ($#c_runs == 0) then
+					echo " "
+					echo "No runs survived motion threshold for ${s}, next..."
+					echo " "
+					continue
+					continue
+					continue
+					continue
+				endif
+			endif
+# Create final anatomy
+			if (! -f ${s}_anat_final+orig.HEAD) 3dcopy ${s}_T1_ns+orig ${s}_anat_final
+			if (! -f ${s}_anat_final+orig.HEAD) echo "anat_final failed..." >> $log
+			echo " "
+			echo "=================== Align Surface Volume to Experiment =================="
+			echo " "
+			if (! -f ${s}_SurfVol+orig.HEAD) then
+				@SUMA_AlignToExperiment 						\
+					-exp_anat ${s}_anat_final+orig 					\
+					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+orig 			\
+					-wd -align_centers 						\
+					-prefix ${s}_SurfVol 
+				if (! -f ${s}_SurfVol+orig.HEAD) then
+					echo "AlignToExperiment failed..." >> $log
+				endif							
+			else
+				echo "${s}_SurfVol already exists"
+			endif
+# Send to surface
+			echo " "
+			echo "=========================== Volume to Surface ==========================="
+			foreach r ($c_runs)
+				echo " "
+				echo "Current run: $r"
+				echo " "
+				foreach h (lh rh)
+					if (! -f ${o}${s}_$r.pb03.$h.v2s.niml.dset) then
+						3dVol2Surf 						\
+							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 	\
+							-surf_A smoothwm				\
+							-surf_B pial 					\
+							-sv ${s}_SurfVol+orig 				\
+							-grid_parent ${o}${s}_$r.pb02.volreg+orig 	\
+							-map_func ave -f_steps 10 -f_index nodes 	\
+							-oob_index -1 -oob_value 0.0 			\
+							-outcols_NSD_format 				\
+							-out_niml ${o}${s}_$r.pb03.$h.v2s.niml.dset
+						if (! -f ${o}${s}_$r.pb03.$h.v2s.niml.dset) then
+							echo "vol2surf, ${r}:${h} failed..." >> $log
+						endif
+					else
+						echo " "
+						echo "${s}_$r.pb03.$h.v2s already exists"
+						echo " "
+					endif
+				end
+			end
+# Intensity normalization
+			echo " "
+			echo "======================== Intensity Normalization ========================"
+			foreach r ($c_runs)
+				echo " "
+				echo "Current run: $r"
+				echo " "
+				foreach h (lh rh)
+					if (! -f ${o}${s}_$r.pb04.$h.scale.niml.dset) then
+						3dTstat 						\
+							-prefix ${o}${s}_$r.pb04.$h.mean.niml.dset	\
+							${o}${s}_$r.pb03.$h.v2s.niml.dset
+						3dcalc 							\
+							-a ${o}${s}_$r.pb03.$h.v2s.niml.dset 		\
+							-b ${o}${s}_$r.pb04.$h.mean.niml.dset		\
+							-expr 'min(200, a/b*100)*step(a)*step(b)' 	\
+							-prefix ${o}${s}_$r.pb04.$h.scale.niml.dset
+						if (! -f ${o}${s}_$r.pb04.$h.scale.niml.dset) then
+							echo "scaling, ${r}:${h} failed..." >> $log
+						endif
+					else
+						echo " "
+						echo "${s}_$r.pb04.$h.scale already exists"
+						echo " "
+					endif
+				end
+			end
+# Spatial smoothing
+			echo " "
+			echo "=========================== Smooth on Surface ==========================="
+			foreach r ($c_runs)
+				echo " "
+				echo "Current run: $r"
+				echo " "
+				foreach h (lh rh)
+					if (! -f ${s}_$r.pb05.$h.smooth.niml.dset) then
+						SurfSmooth 						\
+							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 	\
+							-surf_A smoothwm				\
+							-met HEAT_07 					\
+							-target_fwhm $fwhm 				\
+							-detrend_master 				\
+							-blurmaster ${o}${s}_$r.pb04.$h.scale.niml.dset \
+							-input ${o}${s}_$r.pb04.$h.scale.niml.dset 	\
+							-output ${s}_$r.pb05.$h.smooth.niml.dset
+						if (! -f ${s}_$r.pb05.$h.smooth.niml.dset) then
+							echo "smoothing, ${r}:${h} failed..." >> $log
+						endif
+					else
+						echo " "
+						echo "${s}_$r.pb05.$h.smooth already exists"
+						echo " "
+					endif
+				end
+			end
+# tsnr dataset
+			if ($want_tsnr == yes) then
+			echo " "
+			echo "============================ Calculating TSNR ==========================="
+			foreach r ($c_runs)
+				echo " "
+				echo "Current run: $r"
+				echo " "
+				if (! -f rm.$r.mask+orig.HEAD) then
+					3dAutomask 							\
+						-prefix rm.$r.mask 					\
+						${o}${s}_$r.pb02.volreg+orig
+					if (! -f rm.$r.mask+orig.HEAD) then
+						echo "brain mask, run: $r failed..." >> $log
+					endif
+
+				else
+					echo "${s}_$r brain mask not needed"
+				endif
+			end
+				foreach r ($c_runs)
+					3dTstat 							\
+						-cvarinv -prefix ${s}_$r.TSNR 				\
+						${o}${s}_$r.pb02.volreg+orig.BRIK
+					3dROIstats 							\
+						-nzmean -mask rm.$r.mask+orig 				\
+						${s}_$r.TSNR+orig.BRIK > TSNR.$r.out
+					if (! -f ${s}_$r.TSNR+orig.HEAD) then
+						echo "TSNR, run: $r failed..." >> $log
+					endif
+				end
+			endif
+# Print results of script to log
+# g = good runs, b = bad runs
+			set g_runs = ()
+			set b_runs = ()
+			foreach r ($c_runs)
+				if (-f ${s}_$r.pb05.lh.smooth.niml.dset && -f ${s}_$r.pb05.rh.smooth.niml.dset) then
+					set g_runs = ($g_runs $r)
+				else
+					set b_runs = ($b_runs $r)
+				endif
+			end
+			if ($#b_runs != 0) echo "FAILED:" $b_runs >> $log
+			if ($#g_runs != 0) then
+				echo "Processed:" $g_runs >> $log
+			else
+				echo "Processed: none" >> $log
+			endif
+# Clean up
+			echo " "
+			echo "Cleaning up..."
+			echo " "
+			\rm -f rm.*
+			if ($clean_output == yes) rm -f *T1_*
+		else
+			echo " "
+			echo "No runs to process, DOH!"
+			echo "Processed: none" >> $log
+		endif
+	endif
+	cd $data_dir
+end
+unset nonomatch
+echo " "
+echo "======================================"
+echo " Do or do not, there is no try - Yoda"
+echo "======================================"
+echo " "
+exit

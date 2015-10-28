@@ -1,0 +1,121 @@
+#!/bin/tcsh
+# This script will update s1-s5 afni processing scripts
+# Usage: s.update [options] script1 script2 etc...
+#		<script> options:
+#			-all: all scripts
+#			or you can type the name of one or more scripts to select which to update
+#			-dir: directory for scripts to go, of no -dir specified, they will be written to your pwd
+#			-h: show help file
+#
+# known issues to be solved later:
+
+
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><> Do Not Change  <><><><><><><><><><><><><><><><><>
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+
+# set directory, if -dir specified this will be overwritten
+set dir = `pwd`
+# Variable initialization
+set opts = ()
+set count = 1
+# Parse input
+if ($#argv == 0) then
+	echo " "
+	echo "**** No options given ****"
+	echo " "
+	echo "Here, this may help you:"
+	set argv = (-h)
+endif
+while ($count <= $#argv)
+	switch("$argv[$count]")
+		case "-h":
+			echo " "
+			echo "Usage: s.update [options] script1 script2 etc..."
+			echo "  "
+			echo "Scripts you can ask for:"
+			echo "  s1.dataset"
+			echo "  s2.make_spec"
+			echo "  s3.rest_surf_preproc"
+			echo "  s3.task_surf_preproc"
+			echo "  s3.task_vol_preproc"
+			echo "  s4.motion"
+			echo "  s5.decon"
+			echo " "
+			echo "[options]:"
+			echo "-all: 	will give you all of the above, you do not need to specify"
+			echo "     	individual scripts if this option is used"
+			echo "-dir: 	<dir> will copy the scripts to <dir> ** must be absolute path **"
+			echo "-h: 	display this help file "
+			echo " "
+		exit
+		case "-all":
+			set opts = ($opts 		\
+				s1.dataset 		\
+				s2.make_spec 		\
+				s3.rest_surf_preproc 	\
+				s3.task_surf_preproc 	\
+				s3.task_vol_preproc 	\
+				s4.motion)
+		breaksw
+		case "s1.dataset":
+			set opts = ($opts s1.dataset)
+		breaksw
+		case "s2.make_spec":
+			set opts = ($opts s2.make_spec)
+		breaksw
+		case "s3.task_surf_preproc":
+			set opts = ($opts s3.task_surf_preproc)
+		breaksw
+		case "s3.rest_surf_preproc":
+			set opts = ($opts s3.rest_surf_preproc)
+		breaksw
+		case "s3.task_vol_preproc":
+			set opts = ($opts s3.task_vol_preproc)
+		breaksw
+		case "s4.motion":
+			set opts = ($opts s4.motion)
+		breaksw
+		case "s5.decon":
+			set opts = ($opts s5.decon)
+		breaksw
+		case "-dir":
+			@ count ++
+			set dir = $argv[$count]
+		breaksw
+		default:
+			echo " "
+			echo "$1 not understood"
+			echo "It's a trap! - Admiral Ackbar"
+			echo " "
+			exit
+		breaksw
+	endsw
+	shift
+end
+# Directory check
+if (! -d $dir) then
+	echo " "
+	echo "$dir is not a directory"
+	echo "It's a trap! - Admiral Ackbar"
+	echo " "
+	exit
+else
+# Update scripts
+	echo " "
+	echo "Updating scripts to $dir"
+	echo " "
+	foreach s ($opts)
+		cd $0:h
+		cp -vi $s $dir
+	end
+endif
+echo " "
+echo "Scripts have been updated..."
+echo " "
+echo "================================================================"
+echo "Now, witness the power of this fully operational battle station!"
+echo "================================================================"
+echo " "
+exit
