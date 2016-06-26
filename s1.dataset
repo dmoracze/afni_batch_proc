@@ -147,7 +147,7 @@ foreach s ($subj)
 		echo " "
 		echo "======================== Creating Anatomy Dataset ======================="
 		echo " "
-		set var = `\ls | egrep t1`
+		set var = `\ls | egrep t1_mpr`
 		if ($#var == 0) then
 			echo "Cannot find anatomical directory"
 			set m_runs = ($m_runs T1)

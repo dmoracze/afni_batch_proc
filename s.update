@@ -38,6 +38,7 @@ while ($count <= $#argv)
 			echo "  s1.dataset"
 			echo "  s2.make_spec"
 			echo "  s3.rest_surf_preproc"
+			echo " 	s3.rest_vol_preproc"
 			echo "  s3.task_surf_preproc"
 			echo "  s3.task_vol_preproc"
 			echo "  s4.motion"
@@ -46,7 +47,7 @@ while ($count <= $#argv)
 			echo "[options]:"
 			echo "-all: 	will give you all of the above, you do not need to specify"
 			echo "     	individual scripts if this option is used"
-			echo "-dir: 	<dir> will copy the scripts to <dir> ** must be absolute path **"
+			echo "-dir: 	<dir> will copy the scripts to <dir>"
 			echo "-h: 	display this help file "
 			echo " "
 		exit
@@ -55,6 +56,7 @@ while ($count <= $#argv)
 				s1.dataset 		\
 				s2.make_spec 		\
 				s3.rest_surf_preproc 	\
+				s3.rest_vol_preproc 	\
 				s3.task_surf_preproc 	\
 				s3.task_vol_preproc 	\
 				s4.motion)
@@ -70,6 +72,9 @@ while ($count <= $#argv)
 		breaksw
 		case "s3.rest_surf_preproc":
 			set opts = ($opts s3.rest_surf_preproc)
+		breaksw
+		case "s3.rest_vol_preproc":
+			set opts = ($opts s3.rest_vol_preproc)
 		breaksw
 		case "s3.task_vol_preproc":
 			set opts = ($opts s3.task_vol_preproc)

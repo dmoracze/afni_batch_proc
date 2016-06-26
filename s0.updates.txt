@@ -287,3 +287,8 @@ s1.dataset
 =======
 s3.task_surf_preproc
 	- script looks for the correct file after the smoothing step
+
+6/26/15
+=======
+s1.dataset
+	- uses t1_mpr to look for the T1 instead of t1 to prevent conflicts with run identifiers for functional runs

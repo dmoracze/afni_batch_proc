@@ -19,7 +19,7 @@
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
 
 # Enter subjects
-set subj 		= (001 002 003)
+set subj 		= ()
 
 # Set functional run identifier (i.e. TOM; BM; LL)      !! Do not enter anatomical !!
 # same ones used to grab the correct raw dicom files and to name individual runs in s1.dataset
@@ -31,7 +31,7 @@ set SUMA_dir 		=
 
 # log file will contain errors and a history of runs processed
 set log_name		= preproc.log
-set log_dir		= 
+set log_dir		= $data_dir/logs
 set ow_log		= no			# do you want to overwrite previous log?
 						# if no, script will append to the previous log file
 # Set processing Options
@@ -42,12 +42,13 @@ set volreg_run		= 			# name of run that contains the volume you want to register
 set volreg_vol 		= 			# volume number to register everything to (index begin at 0), (can be blank if default.vol == yes)
 
 set resolution 		= 3 			# resolution (in mm) that you want the functional grid (used in co-registration)
-set censor 		=  1			# Motion censor limit (in mm) for nuisance regression, further motion parameters can be assessed with s4.motion
+set censor 		= 1			# Motion censor limit (in mm) for nuisance regression, further motion parameters can be assessed with s4.motion
 set band 		= (0.01 .1)		# Bandpass Filter
 set fwhm 		= 6			# FWHM blur (in mm) for surface smoothing
+set template 		= MNI_avg152T1+tlrc 	# specify template for normalization, if not in abin, specify path too
 
 # Set script options
-set overwrite 		= yes			# yes 	-> delete conflicting files and create anew
+set overwrite 		= no			# yes 	-> delete conflicting files and create anew
 						# no 	-> if conflicting file exists, proc step skipped 
 set clean_output 	= no			# yes 	-> clean output, only essential final files will be saved
 						# no 	-> all files will be saved, can be used for troubleshooting
@@ -144,11 +145,11 @@ foreach s ($subj)
 			echo "Removing previous files"
 			echo " "
 			foreach r ($t_runs)
-				\rm -f *"$r".pb* *"$r"*.mat* *"$r".MoPar* *mask* *rm* *T1_al* *T1_ns* *anat_final* *FullMask* *TSNR* *aff12* *mLV* *mWM* *SurfVol* *aseg* *censor* *CENSORTR* *A2E* *shft* *REML* *xmat* *.jpg*
+				\rm -f *"$r".pb* *"$r"*.mat* *"$r".MoPar* *mask* *rm.* *T1_al* *T1_ns* *anat_final* *FullMask* *TSNR* *aff12* *mLV* *mWM* *SurfVol* *aseg* *censor* *CENSORTR* *A2E* *shft* *REML* *xmat* *.jpg*
 			end
 		endif
 		foreach r ($t_runs)
-			if (-f ${s}_$r.pb07.lh.smooth.niml.dset && -f ${s}_$r.pb07.rh.smooth.niml.dset) then
+			if (-f ${s}_$r.pb06.smooth+orig.HEAD) then
 				set d_runs = ($d_runs $r)
 			else
 				set c_runs = ($c_runs $r)
@@ -264,14 +265,14 @@ foreach s ($subj)
 						-base ${s}_T1_ns+orig 								\
 						-input ${o}${s}_$r.pb01.Tshift+orig 						\
 						-1Dmatrix_apply ${o}${s}_$r.warp.mat.1D 					\
-						-mast_dxyz $resolution 								\
+						-mast_dxyz 3 									\
 						-prefix rm.$r.nomask
 # Apply transformations to mask as well
 					3dAllineate 										\
 						-base ${s}_T1_ns+orig 								\
 						-input rm.epi.all1+orig 							\
 						-1Dmatrix_apply ${o}${s}_$r.warp.mat.1D 					\
-						-mast_dxyz $resolution -final NN -quiet 					\
+						-mast_dxyz 3 -final NN -quiet 							\
 						-prefix rm.$r.all1
 # extents intersection
 					3dTstat 										\
@@ -298,7 +299,6 @@ foreach s ($subj)
 					echo "${s}_$r.pb02.volreg+orig already exists"
 					echo " "
 				endif
-			end
 # test and skip bad motion if you want me to
 			if ($skip_bad_motion == yes) then
 				alias calc 'awk "BEGIN{ print \!* }" '
@@ -336,13 +336,53 @@ foreach s ($subj)
 					continue
 				endif
 			endif
+# Create final anatomy
+			if (! -f ${s}_anat_final+orig.HEAD) 3dcopy ${s}_T1_ns+orig ${s}_anat_final
+			if (! -f ${s}_anat_final+orig.HEAD) echo "anat_final failed..." >> $log
+# Create brain mask for each run, then a union mask 
+# This will not be applied, but will be useful for group analysis
+			echo " "
+			echo "================================ Brain Mask ==============================="
+			foreach r ($c_runs)
+				echo " "
+				echo "Current run: $r"
+				echo " "
+				if (! -f ${s}_FullMask+orig.HEAD) then
+					3dAutomask 							\
+						-prefix rm.$r.mask 					\
+						${o}${s}_$r.pb02.volreg+orig
+					if (! -f rm.$r.mask+orig.HEAD) then
+						echo "brain mask, run: $r failed..." >> $log
+					endif
+
+				else
+					echo "${s}_$r brain mask not needed"
+				endif
+			end
+			if (! -f ${s}_FullMask+orig.HEAD) then
+				3dMean 									\
+					-datum short 							\
+					-prefix rm.mean.mask 						\
+					rm.*.mask+orig.HEAD
+				3dcalc 									\
+					-a rm.mean.mask+orig 						\
+					-expr 'ispositive(a-0)' 					\
+					-prefix ${s}_FullMask
+				if (! -f ${s}_FullMask+orig.HEAD) then
+					echo "full brain mask failed..." >> $log
+				endif
+
+			else
+				echo " "
+				echo "${s}_FullMask already exists"
+			endif
 # Send functional data to surface
 			echo " "
 			echo "=================== Align Surface Volume to Experiment =================="
 			echo " "
 			if (! -f ${s}_SurfVol+orig.HEAD) then
 				@SUMA_AlignToExperiment 									\
-					-exp_anat ${s}_T1_ns+orig 								\
+					-exp_anat ${s}_anat_final+orig 								\
 					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+orig 						\
 					-wd -align_centers 									\
 					-prefix ${s}_SurfVol 									\
@@ -426,8 +466,6 @@ foreach s ($subj)
 								-mask ${s}_${t}_erode+orig -q 					\
 								${o}${s}_$r.pb02.volreg+orig 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
-							# 1dBandpass 								\
-							# 	$band ${o}${s}_${r}_$t.1D > ${o}${s}_${r}_$t.band.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from white matter, ${r} failed..." >> $log
 							endif
@@ -445,8 +483,6 @@ foreach s ($subj)
 								-mask ${s}_${t}_erode+orig -q 					\
 								${o}${s}_$r.pb02.volreg+orig 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
-							# 1dBandpass 								\
-							# 	$band ${o}${s}_${r}_$t.1D > ${o}${s}_${r}_$t.band.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from ventricle, ${r} failed..." >> $log
 							endif
@@ -458,35 +494,6 @@ foreach s ($subj)
 					endif
 				end
 			end
-# Send to surface
-			echo " "
-			echo "=========================== Volume to Surface ==========================="
-			foreach r ($c_runs)
-				echo " "
-				echo "Current run: $r"
-				echo " "
-				foreach h (lh rh)
-					if (! -f ${o}${s}_$r.pb03.$h.v2s.niml.dset) then
-						3dVol2Surf 									\
-							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 				\
-							-surf_A smoothwm							\
-							-surf_B pial 								\
-							-sv ${s}_SurfVol+orig 							\
-							-grid_parent ${o}${s}_$r.pb02.volreg+orig 				\
-							-map_func ave -f_steps 10 -f_index nodes 				\
-							-oob_index -1 -oob_value 0.0 						\
-							-outcols_NSD_format 							\
-							-out_niml ${o}${s}_$r.pb03.$h.v2s.niml.dset
-						if (! -f ${o}${s}_$r.pb03.$h.v2s.niml.dset) then
-							echo "vol2surf, ${r}:${h} failed..." >> $log
-						endif
-					else
-						echo " "
-						echo "${s}_$r.pb03.$h.v2s already exists"
-						echo " "
-					endif
-				end
-			end
 # Intensity normalization
 			echo " "
 			echo "======================== Intensity Normalization ========================"
@@ -494,43 +501,21 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				foreach h (lh rh)
-					if (! -f ${o}${s}_$r.pb04.$h.scale.niml.dset) then
-						3dTstat 									\
-							-prefix ${o}${s}_$r.pb04.$h.mean.niml.dset				\
-							${o}${s}_$r.pb03.$h.v2s.niml.dset
-						3dcalc 										\
-							-a ${o}${s}_$r.pb03.$h.v2s.niml.dset 					\
-							-b ${o}${s}_$r.pb04.$h.mean.niml.dset					\
-							-expr 'min(200, a/b*100)*step(a)*step(b)' 				\
-							-prefix ${o}${s}_$r.pb04.$h.scale.niml.dset
-						if (! -f ${o}${s}_$r.pb04.$h.scale.niml.dset) then
-							echo "scaling, ${r}:${h} failed..." >> $log
-						endif
-					else
-						echo " "
-						echo "${s}_$r.pb04.$h.scale already exists"
-						echo " "
-					endif
-				end
-			end
-# Bandpass filter
-			echo " "
-			echo "=========================== Bandpass Regressor =========================="
-			foreach r ($c_runs)
-				if (! -f ${o}${s}_$r.band.1D) then
-					echo " "
-					echo "Current run: $r"
-					echo " "
-					set tot_tr = `3dinfo -nv ${o}${s}_$r.pb04.lh.scale.niml.dset`
-					set tr_len = `3dinfo -tr ${o}${s}_$r.pb04.lh.scale.niml.dset`
-					1dBport -nodata $tot_tr $tr_len -band $band -invert -nozero > ${o}${s}_$r.band.1D
-					if (! -f ${o}${s}_$r.band.1D) then
-						echo "bandpass, ${r}:${h} failed..." >> $log
+				if (! -f ${o}${s}_$r.pb03.scale+orig.HEAD) then
+					3dTstat 									\
+						-prefix ${o}${s}_$r.pb03.mean						\
+						${o}${s}_$r.pb02.volreg+orig
+					3dcalc 										\
+						-a ${o}${s}_$r.pb02.volreg+orig						\
+						-b ${o}${s}_$r.pb03.mean+orig						\
+						-expr 'min(200, a/b*100)*step(a)*step(b)' 				\
+						-prefix ${o}${s}_$r.pb03.scale+orig
+					if (! -f ${o}${s}_$r.pb03.scale+orig.HEAD) then
+						echo "scaling, ${r} failed..." >> $log
 					endif
 				else
 					echo " "
-					echo "${s}_$r.band.1D already exists"
+					echo "${s}_$r.pb03.scale already exists"
 					echo " "
 				endif
 			end
@@ -564,71 +549,63 @@ foreach s ($subj)
 				endif
 			end
 # Extract motion and tissue signal
+# 			-ortvec ${o}${s}_$r.band.1D bandpass					\
+
 			echo " "
 			echo "==================== 3dDeconvolve Nuisance Regression ==================="
 			foreach r ($c_runs)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				foreach h (lh rh)
-					if (! -f ${o}${s}_$r.pb05.$h.NRerrts.niml.dset) then
-						3dDeconvolve 									\
-							-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
-							-polort A -jobs 4							\
-							-ortvec ${o}${s}_$r.band.1D bandpass					\
-							-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
-							-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
-							-ortvec ${o}${s}_${r}_mWM.1D mWM					\
-							-ortvec ${o}${s}_${r}_mLV.1D mLV					\
-							-censor ${o}${s}_${r}_censor.1D 					\
-							-tout -fout -x1D ${o}${s}_$r.$h.xmat.1D					\
-							-x1D_uncensored ${o}${s}_$r.$h.nocen.xmat.1D 				\
-							-errts ${o}${s}_$r.$h.NRerrts.niml.dset					\
-							-x1D_stop 								\
-							-bucket ${o}${s}_$r.$h.NRstats.niml.dset
-						3dTproject 									\
-							-polort 0 								\
-							-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
-							-censor ${o}${s}_${r}_censor.1D -cenmode ZERO 				\
-							-ort ${o}${s}_$r.$h.nocen.xmat.1D 					\
-							-prefix ${o}${s}_$r.pb05.$h.NRerrts.niml.dset
-						if (! -f ${o}${s}_$r.pb05.$h.NRerrts.niml.dset) then
-							echo "nuisance regression, ${r}:${h} failed..." >> $log
-						endif
-					else
-						echo " "
-						echo "${s}_$r.pb05.$h.NRerrts already exists"
-						echo " "
+				if (! -f ${o}${s}_$r.pb04.NRerrts+orig.HEAD) then
+					3dDeconvolve 									\
+						-input ${o}${s}_$r.pb03.scale+orig  					\
+						-polort A -jobs 4							\
+						-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
+						-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
+						-ortvec ${o}${s}_${r}_mWM.1D mWM					\
+						-ortvec ${o}${s}_${r}_mLV.1D mLV					\
+						-censor ${o}${s}_${r}_censor.1D 					\
+						-tout -fout -x1D ${o}${s}_$r.xmat.1D					\
+						-x1D_uncensored ${o}${s}_$r.nocen.xmat.1D 				\
+						-errts ${o}${s}_$r.NRerrts 						\
+						-x1D_stop 								\
+						-bucket ${o}${s}_$r.NRstats
+					3dTproject 									\
+						-polort 0 								\
+						-input ${o}${s}_$r.pb03.scale+orig					\
+						-censor ${o}${s}_${r}_censor.1D -cenmode ZERO 				\
+						-ort ${o}${s}_$r.nocen.xmat.1D 						\
+						-prefix ${o}${s}_$r.pb04.NRerrts
+					if (! -f ${o}${s}_$r.pb04.NRerrts+orig.HEAD) then
+						echo "nuisance regression, ${r} failed..." >> $log
 					endif
-				end
+				else
+					echo " "
+					echo "${s}_$r.pb04.NRerrts already exists"
+					echo " "
+				endif
 			end
-# Spatial smoothing
+# # Spatial smoothing
 			echo " "
-			echo "=========================== Smooth on Surface ==========================="
+			echo "============================ Spatial Smoothing ============================"
 			foreach r ($c_runs)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				foreach h (lh rh)
-					if (! -f ${s}_$r.pb06.$h.smooth.niml.dset) then
-						SurfSmooth 									\
-							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 				\
-							-surf_A smoothwm							\
-							-met HEAT_07 								\
-							-target_fwhm $fwhm 							\
-							-detrend_master 							\
-							-blurmaster ${o}${s}_$r.pb05.$h.NRerrts.niml.dset 			\
-							-input ${o}${s}_$r.pb05.$h.NRerrts.niml.dset 				\
-							-output ${s}_$r.pb06.$h.smooth.niml.dset
-						if (! -f ${s}_$r.pb06.$h.smooth.niml.dset) then
-							echo "smoothing, ${r}:${h} failed..." >> $log
-						endif
-					else
-						echo " "
-						echo "${s}_$r.pb06.$h.smooth already exists"
-						echo " "
-					endif
-				end
+				if (! -f ${s}_$r.pb05.smooth+orig.HEAD) then
+					3dBlurInMask 							\
+						-input ${o}${s}_$r.pb04.NRerrts+orig 			\
+						-FWHM $fwhm 						\
+						-mask ${s}_FullMask+orig 				\
+						-preserve 						\
+						-prefix ${s}_$r.pb05.smooth
+					if (! -f ${s}_$r.pb05.smooth+orig.HEAD) then
+						echo "smoothing, run: $r failed..." >> $log
+					endif 					
+				else
+					echo "${s}_$r.pb05.smooth already exists"
+				endif
 			end
 # tsnr dataset
 			if ($want_tsnr == yes) then
@@ -667,7 +644,7 @@ foreach s ($subj)
 			set g_runs = ()
 			set b_runs = ()
 			foreach r ($c_runs)
-				if (-f ${s}_$r.pb06.lh.smooth.niml.dset && -f ${s}_$r.pb06.rh.smooth.niml.dset) then
+				if (-f ${s}_$r.pb05.smooth+orig.HEAD) then
 					set g_runs = ($g_runs $r)
 				else
 					set b_runs = ($b_runs $r)
