@@ -361,7 +361,7 @@ foreach s ($subj)
 				foreach h (lh rh)
 					if (! -f ${o}${s}_$r.pb03.$h.v2s.niml.dset) then
 						3dVol2Surf 						\
-							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 	\
+							-spec $SUMA_dir/$s/SUMA/std.60.${s}_$h.spec 	\
 							-surf_A smoothwm				\
 							-surf_B pial 					\
 							-sv ${s}_SurfVol+orig 				\
@@ -417,7 +417,7 @@ foreach s ($subj)
 				foreach h (lh rh)
 					if (! -f ${s}_$r.pb05.$h.smooth.niml.dset) then
 						SurfSmooth 						\
-							-spec $SUMA_dir/$s/SUMA/std.141.${s}_$h.spec 	\
+							-spec $SUMA_dir/$s/SUMA/std.60.${s}_$h.spec 	\
 							-surf_A smoothwm				\
 							-met HEAT_07 					\
 							-target_fwhm $fwhm 				\
