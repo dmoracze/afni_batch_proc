@@ -35,7 +35,6 @@ set log_dir		=
 set ow_log		= no		# do you want to overwrite previous log?
 					# if no, script will append to the previous log file
 # Set processing Options
-set skip_slice 		= no 		# yes 	-> skip slice time correction (for multiband data)
 set default_vol 	= yes		# yes 	-> default volreg aligns everything to the 1st volume of the 1st run
 # if no:				# no 	-> allows you to specify what run and volume below
 set volreg_run		=		# name of run that contains the volume you want to register everything to (can be blank if default.vol == yes)
