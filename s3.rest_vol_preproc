@@ -331,11 +331,11 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				if (! -f ${s}_FullMask+orig.HEAD) then
+				if (! -f ${s}_FullMask+tlrc.HEAD) then
 					3dAutomask 							\
 						-prefix rm.$r.mask 					\
-						${o}${s}_$r.pb02.volreg+orig
-					if (! -f rm.$r.mask+orig.HEAD) then
+						${o}${s}_$r.pb02.volreg+tlrc
+					if (! -f rm.$r.mask+tlrc.HEAD) then
 						echo "brain mask, run: $r failed..." >> $log
 					endif
 
@@ -343,16 +343,16 @@ foreach s ($subj)
 					echo "${s}_$r brain mask not needed"
 				endif
 			end
-			if (! -f ${s}_FullMask+orig.HEAD) then
+			if (! -f ${s}_FullMask+tlrc.HEAD) then
 				3dMean 									\
 					-datum short 							\
 					-prefix rm.mean.mask 						\
-					rm.*.mask+orig.HEAD
+					rm.*.mask+tlrc.HEAD
 				3dcalc 									\
-					-a rm.mean.mask+orig 						\
+					-a rm.mean.mask+tlrc 						\
 					-expr 'ispositive(a-0)' 					\
 					-prefix ${s}_FullMask
-				if (! -f ${s}_FullMask+orig.HEAD) then
+				if (! -f ${s}_FullMask+tlrc.HEAD) then
 					echo "full brain mask failed..." >> $log
 				endif
 
@@ -364,14 +364,14 @@ foreach s ($subj)
 			echo " "
 			echo "=================== Align Surface Volume to Experiment =================="
 			echo " "
-			if (! -f ${s}_SurfVol+orig.HEAD) then
+			if (! -f ${s}_SurfVol+tlrc.HEAD) then
 				@SUMA_AlignToExperiment 									\
-					-exp_anat ${s}_anat_final+orig 								\
-					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+orig 						\
+					-exp_anat ${s}_anat_final+tlrc 								\
+					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+tlrc 						\
 					-wd -align_centers 									\
 					-prefix ${s}_SurfVol 									\
 					-surf_anat_followers $SUMA_dir/$s/SUMA/aseg.nii
-				if (! -f ${s}_SurfVol+orig.HEAD) then
+				if (! -f ${s}_SurfVol+tlrc.HEAD) then
 					echo "AlignToExperiment failed..." >> $log
 				endif
 			else
@@ -382,30 +382,30 @@ foreach s ($subj)
 # White matter and ventricle nuisance regressors
 			echo " "
 			echo "=================== Create and Re-sample Tissue Masks  =================="
-			if (! -f ${s}_mWM_erode+orig.HEAD && ! -f ${s}_mLV_erode+orig.HEAD) then
+			if (! -f ${s}_mWM_erode+tlrc.HEAD && ! -f ${s}_mLV_erode+tlrc.HEAD) then
 				foreach t (mWM mLV)
 					if ($t == mWM) then
 						echo " "
 						echo "White matter..."
 						echo " "
 							3dcalc 									\
-								-a aseg_Alnd_Exp+orig 						\
+								-a aseg_Alnd_Exp+tlrc 						\
 								-expr 'equals(a,2)+equals(a,7)+equals(a,41)+equals(a,46)+equals(a,251)+equals(a,252)+equals(a,253)+equals(a,254)+equals(a,255)+equals(a,16)' \
 								-prefix ${o}${s}_$t
 							3dresample 								\
-								-master ${o}${s}_$c_runs[1].pb02.volreg+orig 			\
+								-master ${o}${s}_$c_runs[1].pb02.volreg+tlrc 			\
 								-rmode NN 							\
-								-inset ${o}${s}_${t}+orig 					\
+								-inset ${o}${s}_${t}+tlrc 					\
 								-prefix ${o}${s}_${t}_re
 						echo " "
 						echo "I'm eroding..."
 						echo " "
 							3dcalc 									\
-								-a ${o}${s}_${t}_re+orig 					\
+								-a ${o}${s}_${t}_re+tlrc 					\
 								-prefix ${s}_${t}_erode 					\
 								-b a+i -c a-i -d a+j -e a-j -f a+k -g a-k 			\
 								-expr 'a*(1-amongst(0,a,b,c,d,e,f,g))'
-						if (! -f ${s}_${t}_erode+orig.HEAD) then
+						if (! -f ${s}_${t}_erode+tlrc.HEAD) then
 							echo "white matter mask failed..." >> $log
 						endif
 					else
@@ -413,18 +413,18 @@ foreach s ($subj)
 						echo "Ventricle..."
 						echo " "
 						3dcalc 										\
-							-a aseg_Alnd_Exp+orig 							\
+							-a aseg_Alnd_Exp+tlrc 							\
 							-expr 'equals(a,4)+equals(a,43)' 					\
 							-prefix ${o}${s}_$t
 						echo " "
 						echo "I'm eroding..."
 						echo " "
 							3dfractionize 								\
-								-template ${o}${s}_$c_runs[1].pb02.volreg+orig 			\
-								-input ${o}${s}_$t+orig 					\
+								-template ${o}${s}_$c_runs[1].pb02.volreg+tlrc 			\
+								-input ${o}${s}_$t+tlrc 					\
 								-prefix ${s}_${t}_erode 					\
 								-vote -preserve -clip 0.8
-						if (! -f ${s}_${t}_erode+orig.HEAD) then
+						if (! -f ${s}_${t}_erode+tlrc.HEAD) then
 							echo "ventricle mask failed..." >> $log
 						endif
 					endif
@@ -447,8 +447,8 @@ foreach s ($subj)
 						echo " "
 						if (! -f ${o}${s}_${r}_$t.band.1D) then
 							3dmaskave 								\
-								-mask ${s}_${t}_erode+orig -q 					\
-								${o}${s}_$r.pb02.volreg+orig 					\
+								-mask ${s}_${t}_erode+tlrc -q 					\
+								${o}${s}_$r.pb02.volreg+tlrc 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from white matter, ${r} failed..." >> $log
@@ -464,8 +464,8 @@ foreach s ($subj)
 						echo " "
 						if (! -f ${o}${s}_${r}_$t.band.1D) then
 							3dmaskave 								\
-								-mask ${s}_${t}_erode+orig -q 					\
-								${o}${s}_$r.pb02.volreg+orig 					\
+								-mask ${s}_${t}_erode+tlrc -q 					\
+								${o}${s}_$r.pb02.volreg+tlrc 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from ventricle, ${r} failed..." >> $log
@@ -485,16 +485,16 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				if (! -f ${o}${s}_$r.pb03.scale+orig.HEAD) then
+				if (! -f ${o}${s}_$r.pb03.scale+tlrc.HEAD) then
 					3dTstat 									\
 						-prefix ${o}${s}_$r.pb03.mean						\
-						${o}${s}_$r.pb02.volreg+orig
+						${o}${s}_$r.pb02.volreg+tlrc
 					3dcalc 										\
-						-a ${o}${s}_$r.pb02.volreg+orig						\
-						-b ${o}${s}_$r.pb03.mean+orig						\
+						-a ${o}${s}_$r.pb02.volreg+tlrc						\
+						-b ${o}${s}_$r.pb03.mean+tlrc						\
 						-expr 'min(200, a/b*100)*step(a)*step(b)' 				\
-						-prefix ${o}${s}_$r.pb03.scale+orig
-					if (! -f ${o}${s}_$r.pb03.scale+orig.HEAD) then
+						-prefix ${o}${s}_$r.pb03.scale+tlrc
+					if (! -f ${o}${s}_$r.pb03.scale+tlrc.HEAD) then
 						echo "scaling, ${r} failed..." >> $log
 					endif
 				else
@@ -541,9 +541,9 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				if (! -f ${o}${s}_$r.pb04.NRerrts+orig.HEAD) then
+				if (! -f ${o}${s}_$r.pb04.NRerrts+tlrc.HEAD) then
 					3dDeconvolve 									\
-						-input ${o}${s}_$r.pb03.scale+orig  					\
+						-input ${o}${s}_$r.pb03.scale+tlrc  					\
 						-polort A -jobs 4							\
 						-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
 						-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
@@ -557,11 +557,11 @@ foreach s ($subj)
 						-bucket ${o}${s}_$r.NRstats
 					3dTproject 									\
 						-polort 0 								\
-						-input ${o}${s}_$r.pb03.scale+orig					\
+						-input ${o}${s}_$r.pb03.scale+tlrc					\
 						-censor ${o}${s}_${r}_censor.1D -cenmode ZERO 				\
 						-ort ${o}${s}_$r.nocen.xmat.1D 						\
 						-prefix ${o}${s}_$r.pb04.NRerrts
-					if (! -f ${o}${s}_$r.pb04.NRerrts+orig.HEAD) then
+					if (! -f ${o}${s}_$r.pb04.NRerrts+tlrc.HEAD) then
 						echo "nuisance regression, ${r} failed..." >> $log
 					endif
 				else
@@ -577,14 +577,14 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				if (! -f ${s}_$r.pb05.smooth+orig.HEAD) then
+				if (! -f ${s}_$r.pb05.smooth+tlrc.HEAD) then
 					3dBlurInMask 							\
-						-input ${o}${s}_$r.pb04.NRerrts+orig 			\
+						-input ${o}${s}_$r.pb04.NRerrts+tlrc 			\
 						-FWHM $fwhm 						\
-						-mask ${s}_FullMask+orig 				\
+						-mask ${s}_FullMask+tlrc 				\
 						-preserve 						\
 						-prefix ${s}_$r.pb05.smooth
-					if (! -f ${s}_$r.pb05.smooth+orig.HEAD) then
+					if (! -f ${s}_$r.pb05.smooth+tlrc.HEAD) then
 						echo "smoothing, run: $r failed..." >> $log
 					endif 					
 				else
@@ -599,11 +599,11 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				if (! -f rm.$r.mask+orig.HEAD) then
+				if (! -f rm.$r.mask+tlrc.HEAD) then
 					3dAutomask 										\
 						-prefix rm.$r.mask 								\
-						${o}${s}_$r.pb02.volreg+orig
-					if (! -f rm.$r.mask+orig.HEAD) then
+						${o}${s}_$r.pb02.volreg+tlrc
+					if (! -f rm.$r.mask+tlrc.HEAD) then
 						echo "brain mask, run: $r failed..." >> $log
 					endif
 
@@ -614,11 +614,11 @@ foreach s ($subj)
 				foreach r ($c_runs)
 					3dTstat 										\
 						-cvarinv -prefix ${s}_$r.TSNR 							\
-						${o}${s}_$r.pb02.volreg+orig.BRIK
+						${o}${s}_$r.pb02.volreg+tlrc.BRIK
 					3dROIstats 										\
-						-nzmean -mask rm.$r.mask+orig 							\
-						${s}_$r.TSNR+orig.BRIK > TSNR.$r.out
-					if (! -f ${s}_$r.TSNR+orig.HEAD) then
+						-nzmean -mask rm.$r.mask+tlrc 							\
+						${s}_$r.TSNR+tlrc.BRIK > TSNR.$r.out
+					if (! -f ${s}_$r.TSNR+tlrc.HEAD) then
 						echo "TSNR, run: $r failed..." >> $log
 					endif
 				end
@@ -628,7 +628,7 @@ foreach s ($subj)
 			set g_runs = ()
 			set b_runs = ()
 			foreach r ($c_runs)
-				if (-f ${s}_$r.pb05.smooth+orig.HEAD) then
+				if (-f ${s}_$r.pb05.smooth+tlrc.HEAD) then
 					set g_runs = ($g_runs $r)
 				else
 					set b_runs = ($b_runs $r)
