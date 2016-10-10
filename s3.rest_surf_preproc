@@ -203,9 +203,9 @@ foreach s ($subj)
 					-anat2epi -anat ${s}_T1+orig 								\
 					-save_skullstrip 									\
 					-suffix _al 										\
-					-epi ${o}${s}_$c_runs[1].pb01.Tshift+orig 						\
+					-epi $v_run -align_centers								\
 					-epi_strip 3dAutomask 									\
-					-epi_base 0 -volreg off -tshift off
+					-epi_base $v_vol -volreg off -tshift off
 				if (! -f ${s}_T1_ns+orig.HEAD) then
 					echo "align_epi_anat failed..." >> $log
 				endif

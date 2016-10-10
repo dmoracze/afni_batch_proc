@@ -305,3 +305,4 @@ s3.rest_vol_preproc
 s3.* 
 	- remove the slice time specification and make the program read slice timing from image - you know, to be more flexible for multiband and not
 	- this assumes that slice time is in the image
+	- add -align_centers to pb02

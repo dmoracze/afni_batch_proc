@@ -198,7 +198,7 @@ foreach s ($subj)
 					-anat2epi -anat ${s}_T1+orig 					\
 					-save_skullstrip 						\
 					-suffix _al 							\
-					-epi $v_run 							\
+					-epi $v_run -align_centers					\
 					-epi_strip 3dAutomask 						\
 					-epi_base $v_vol -volreg off -tshift off
 				if (! -f ${s}_T1_ns+orig.HEAD) then
