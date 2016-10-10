@@ -163,46 +163,24 @@ foreach s ($subj)
 		if ($#c_runs != 0) then
 # Volume based functional preprocessing
 # Slice time correction
-			if ($skip_slice == no) then
+			echo " "
+			echo "========================= Slice Time Correction ========================="
+			echo " "
+			foreach r ($c_runs)
 				echo " "
-				echo "========================= Slice Time Correction ========================="
-				foreach r ($c_runs)
-					echo " "
-					echo "Current run: $r"
-					echo " "
-					if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
-						3dTshift 							\
-							-slice 1 -tpattern alt+z2 				\
-							-prefix ${o}${s}_$r.pb01.Tshift 			\
-							${s}_$r+orig
-						if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
-							echo "slice timing, run: $r failed..." >> $log
-						endif
-					else
-						echo "${s}_$r.pb01.Tshift already exists"
-					endif
-				end
-			else if ($skip_slice == yes) then
-				echo " "
-				echo "Skipping slice time correction because you told me to..."
+				echo "Current run: $r"
 				echo " "
 				if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
-					foreach r ($c_runs)
-						3dcopy ${s}_$r+orig ${o}${s}_$r.pb01.Tshift+orig.HEAD
-					end
+					3dTshift 							\
+						-prefix ${o}${s}_$r.pb01.Tshift 			\
+						${s}_$r+orig
+					if (! -f ${o}${s}_$r.pb01.Tshift+orig.HEAD) then
+						echo "slice timing, run: $r failed..." >> $log
+					endif
 				else
 					echo "${s}_$r.pb01.Tshift already exists"
 				endif
-			else 
-				echo " "
-				echo "Slice time option $skip_slice not understood, help me help you"
-				echo "Set skip_slice to yes/no"
-				echo " "
-				echo "failing..."
-				echo " "
-				exit
-			endif
-			echo "skip_slice = $skip_slice" >> $log
+			end
 			echo " "
 			echo "=========================== Volume Registration ==========================="
 			echo " "

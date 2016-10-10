@@ -292,3 +292,16 @@ s3.task_surf_preproc
 =======
 s1.dataset
 	- uses t1_mpr to look for the T1 instead of t1 to prevent conflicts with run identifiers for functional runs
+
+10/4/16
+=======
+s3.*_surf_preproc
+	-change std.141 to std.60 - not sure why I hadn't changed this before...
+
+10/10/16
+========
+s3.rest_vol_preproc
+	- add tlrc normalization - not sure why this wasn't there before
+s3.* 
+	- remove the slice time specification and make the program read slice timing from image - you know, to be more flexible for multiband and not
+	- this assumes that slice time is in the image
