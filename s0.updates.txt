@@ -306,3 +306,12 @@ s3.*
 	- remove the slice time specification and make the program read slice timing from image - you know, to be more flexible for multiband and not
 	- this assumes that slice time is in the image
 	- add -align_centers to pb02
+
+10/14/16
+========
+s3.rest_vol_preproc
+	- added a bunch of stuff that I should have had before
+		bandpass properly
+		align properly
+		clean up some typos
+		proper SUMA SurfVol alignment

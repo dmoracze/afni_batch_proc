@@ -148,7 +148,7 @@ foreach s ($subj)
 			end
 		endif
 		foreach r ($t_runs)
-			if (-f ${s}_$r.pb06.smooth+orig.HEAD) then
+			if (-f ${s}_$r.pb05.smooth+orig.HEAD) then
 				set d_runs = ($d_runs $r)
 			else
 				set c_runs = ($c_runs $r)
@@ -204,7 +204,7 @@ foreach s ($subj)
 					-anat2epi -anat ${s}_T1+orig 					\
 					-save_skullstrip 						\
 					-suffix _al 							\
-					-epi $v_run -align_centers					\
+					-epi $v_run -align_centers yes					\
 					-epi_strip 3dAutomask 						\
 					-epi_base $v_vol -volreg off -tshift off
 				if (! -f ${s}_T1_ns+orig.HEAD) then
@@ -445,7 +445,7 @@ foreach s ($subj)
 						echo " "
 						echo "White matter..."
 						echo " "
-						if (! -f ${o}${s}_${r}_$t.band.1D) then
+						if (! -f ${o}${s}_${r}_$t.1D) then
 							3dmaskave 								\
 								-mask ${s}_${t}_erode+tlrc -q 					\
 								${o}${s}_$r.pb02.volreg+tlrc 					\
@@ -462,7 +462,7 @@ foreach s ($subj)
 						echo " "		
 						echo "Ventricle..."
 						echo " "
-						if (! -f ${o}${s}_${r}_$t.band.1D) then
+						if (! -f ${o}${s}_${r}_$t.1D) then
 							3dmaskave 								\
 								-mask ${s}_${t}_erode+tlrc -q 					\
 								${o}${s}_$r.pb02.volreg+tlrc 					\
@@ -503,6 +503,26 @@ foreach s ($subj)
 					echo " "
 				endif
 			end
+# Bandpass filter
+			echo " "
+			echo "=========================== Bandpass Regressor =========================="
+			foreach r ($c_runs)
+				if (! -f ${o}${s}_$r.band.1D) then
+					echo " "
+					echo "Current run: $r"
+					echo " "
+					set tot_tr = `3dinfo -nv ${o}${s}_$r.pb03.scale+tlrc`
+					set tr_len = `3dinfo -tr ${o}${s}_$r.pb03.scale+tlrc`
+					1dBport -nodata $tot_tr $tr_len -band $band -invert -nozero > ${o}${s}_$r.band.1D
+					if (! -f ${o}${s}_$r.band.1D) then
+						echo "bandpass, ${r}:${h} failed..." >> $log
+					endif
+				else
+					echo " "
+					echo "${s}_$r.band.1D already exists"
+					echo " "
+				endif
+			end
 # Calculate motion regressors
 			echo " "
 			echo "=========================== Motion Regressors ==========================="
@@ -533,8 +553,6 @@ foreach s ($subj)
 				endif
 			end
 # Extract motion and tissue signal
-# 			-ortvec ${o}${s}_$r.band.1D bandpass					\
-
 			echo " "
 			echo "==================== 3dDeconvolve Nuisance Regression ==================="
 			foreach r ($c_runs)
@@ -544,7 +562,8 @@ foreach s ($subj)
 				if (! -f ${o}${s}_$r.pb04.NRerrts+tlrc.HEAD) then
 					3dDeconvolve 									\
 						-input ${o}${s}_$r.pb03.scale+tlrc  					\
-						-polort A -jobs 4							\
+						-polort A -jobs 10 							\
+						-ortvec ${o}${s}_$r.band.1D bandpass 					\
 						-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
 						-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
 						-ortvec ${o}${s}_${r}_mWM.1D mWM					\

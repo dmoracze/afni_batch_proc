@@ -41,7 +41,7 @@ set volreg_run		= 			# name of run that contains the volume you want to register
 set volreg_vol 		= 			# volume number to register everything to (index begin at 0), (can be blank if default.vol == yes)
 
 set resolution 		= 3 			# resolution (in mm) that you want the functional grid (used in co-registration)
-set censor 		=  1			# Motion censor limit (in mm) for nuisance regression, further motion parameters can be assessed with s4.motion
+set censor 		= (1)			# Motion censor limit (in mm) for nuisance regression, further motion parameters can be assessed with s4.motion
 set band 		= (0.01 .1)		# Bandpass Filter
 set fwhm 		= 6			# FWHM blur (in mm) for surface smoothing
 
@@ -203,7 +203,7 @@ foreach s ($subj)
 					-anat2epi -anat ${s}_T1+orig 								\
 					-save_skullstrip 									\
 					-suffix _al 										\
-					-epi $v_run -align_centers								\
+					-epi $v_run -align_centers yes								\
 					-epi_strip 3dAutomask 									\
 					-epi_base $v_vol -volreg off -tshift off
 				if (! -f ${s}_T1_ns+orig.HEAD) then
@@ -398,13 +398,11 @@ foreach s ($subj)
 						echo " "
 						echo "White matter..."
 						echo " "
-						if (! -f ${o}${s}_${r}_$t.band.1D) then
+						if (! -f ${o}${s}_${r}_$t.1D) then
 							3dmaskave 								\
 								-mask ${s}_${t}_erode+orig -q 					\
 								${o}${s}_$r.pb02.volreg+orig 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
-							# 1dBandpass 								\
-							# 	$band ${o}${s}_${r}_$t.1D > ${o}${s}_${r}_$t.band.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from white matter, ${r} failed..." >> $log
 							endif
@@ -417,13 +415,11 @@ foreach s ($subj)
 						echo " "		
 						echo "Ventricle..."
 						echo " "
-						if (! -f ${o}${s}_${r}_$t.band.1D) then
+						if (! -f ${o}${s}_${r}_$t.1D) then
 							3dmaskave 								\
 								-mask ${s}_${t}_erode+orig -q 					\
 								${o}${s}_$r.pb02.volreg+orig 					\
 								| 1d_tool.py -infile - -demean -write ${o}${s}_${r}_$t.1D
-							# 1dBandpass 								\
-							# 	$band ${o}${s}_${r}_$t.1D > ${o}${s}_${r}_$t.band.1D
 							if (! -f ${o}${s}_${r}_${t}.1D) then
 								echo "time series from ventricle, ${r} failed..." >> $log
 							endif
@@ -518,7 +514,7 @@ foreach s ($subj)
 			echo " "
 			echo "Current run: $r"
 			echo " "
-				if (! -f ${o}${s}_$r.MoPar_derv.1D && ! -f ${o}${s}_$r.MoPar_demean.1D && ! -f ${o}${s}_${r}_censor.1D) then
+				if (! -f ${o}${s}_$r.MoPar_derv.1D && ! -f ${o}${s}_$r.MoPar_demean.1D) then
 					1d_tool.py 										\
 						-infile ${s}_$r.MoPar.1D 							\
 						-derivative 									\
@@ -527,18 +523,28 @@ foreach s ($subj)
 						-infile ${s}_$r.MoPar.1D 							\
 						-demean 									\
 						-write ${o}${s}_$r.MoPar_demean.1D
-					1d_tool.py 										\
-						-infile ${s}_$r.MoPar.1D 							\
-						-censor_prev_TR -show_censor_count						\
-						-censor_motion $censor ${o}${s}_$r
-					if (! -f ${o}${s}_$r.MoPar_derv.1D && ! -f ${o}${s}_$r.MoPar_demean.1D && ! -f ${o}${s}_${r}_censor.1D) then
+					if (! -f ${o}${s}_$r.MoPar_derv.1D && ! -f ${o}${s}_$r.MoPar_demean.1D) then
 						echo "motion parameters, ${r} failed..." >> $log
 					endif
 				else
 					echo " "
-					echo "Demean, derivative, and censor files for ${s}_$r already exist"
+					echo "Demean and derivative files for ${s}_$r already exist"
 					echo " "
 				endif
+				foreach c ($censor)
+					if (! -f ${o}${s}_${r}.${c}mm_censor.1D) then 
+						1d_tool.py 									\
+							-infile ${s}_$r.MoPar.1D 						\
+							-censor_prev_TR -show_censor_count					\
+							-censor_motion $c ${o}${s}_$r.${c}mm
+						if (! -f ${o}${s}_${r}.${c}mm_censor.1D) then
+						echo "censoring at ${c}mm failed..." >> $log
+						endif
+					else
+						echo " "
+						echo "Censoring at ${c}mm failed..." >> $log
+					endif
+				end
 			end
 # Extract motion and tissue signal
 			echo " "
@@ -547,36 +553,38 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				foreach h (lh rh)
-					if (! -f ${o}${s}_$r.pb05.$h.NRerrts.niml.dset) then
-						3dDeconvolve 									\
-							-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
-							-polort A -jobs 4							\
-							-ortvec ${o}${s}_$r.band.1D bandpass					\
-							-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
-							-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
-							-ortvec ${o}${s}_${r}_mWM.1D mWM					\
-							-ortvec ${o}${s}_${r}_mLV.1D mLV					\
-							-censor ${o}${s}_${r}_censor.1D 					\
-							-tout -fout -x1D ${o}${s}_$r.$h.xmat.1D					\
-							-x1D_uncensored ${o}${s}_$r.$h.nocen.xmat.1D 				\
-							-errts ${o}${s}_$r.$h.NRerrts.niml.dset					\
-							-x1D_stop 								\
-							-bucket ${o}${s}_$r.$h.NRstats.niml.dset
-						3dTproject 									\
-							-polort 0 								\
-							-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
-							-censor ${o}${s}_${r}_censor.1D -cenmode ZERO 				\
-							-ort ${o}${s}_$r.$h.nocen.xmat.1D 					\
-							-prefix ${o}${s}_$r.pb05.$h.NRerrts.niml.dset
-						if (! -f ${o}${s}_$r.pb05.$h.NRerrts.niml.dset) then
-							echo "nuisance regression, ${r}:${h} failed..." >> $log
+				foreach c ($censor)
+					foreach h (lh rh)
+						if (! -f ${o}${s}_$r.pb05.$h.NRerrts.${c}mm.niml.dset) then
+							3dDeconvolve 									\
+								-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
+								-polort A -jobs 10							\
+								-ortvec ${o}${s}_$r.band.1D bandpass					\
+								-ortvec ${o}${s}_$r.MoPar_derv.1D MoPar_derv 				\
+								-ortvec ${o}${s}_$r.MoPar_demean.1D MoPar_demean 			\
+								-ortvec ${o}${s}_${r}_mWM.1D mWM					\
+								-ortvec ${o}${s}_${r}_mLV.1D mLV					\
+								-censor ${o}${s}_${r}.${c}mm_censor.1D 					\
+								-tout -fout -x1D ${o}${s}_$r.$h.xmat.1D					\
+								-x1D_uncensored ${o}${s}_$r.$h.nocen.xmat.1D 				\
+								-errts ${o}${s}_$r.$h.NRerrts.${c}mm.niml.dset				\
+								-x1D_stop 								\
+								-bucket ${o}${s}_$r.$h.NRstats.${c}mm.niml.dset
+							3dTproject 									\
+								-polort 0 								\
+								-input ${o}${s}_$r.pb04.$h.scale.niml.dset 				\
+								-censor ${o}${s}_${r}.${c}mm_censor.1D -cenmode ZERO 			\
+								-ort ${o}${s}_$r.$h.nocen.xmat.1D 					\
+								-prefix ${o}${s}_$r.pb05.$h.NRerrts.${c}mm.niml.dset
+							if (! -f ${o}${s}_$r.pb05.$h.NRerrts.${c}mm.niml.dset) then
+								echo "nuisance regression, ${r}:${c}mm:${h} failed..." >> $log
+							endif
+						else
+							echo " "
+							echo "${s}_$r.pb05.$h.NRerrts.${c}mm already exists"
+							echo " "
 						endif
-					else
-						echo " "
-						echo "${s}_$r.pb05.$h.NRerrts already exists"
-						echo " "
-					endif
+					end
 				end
 			end
 # Spatial smoothing
@@ -586,25 +594,27 @@ foreach s ($subj)
 				echo " "
 				echo "Current run: $r"
 				echo " "
-				foreach h (lh rh)
-					if (! -f ${s}_$r.pb06.$h.smooth.niml.dset) then
-						SurfSmooth 									\
-							-spec $SUMA_dir/$s/SUMA/std.60.${s}_$h.spec 				\
-							-surf_A smoothwm							\
-							-met HEAT_07 								\
-							-target_fwhm $fwhm 							\
-							-detrend_master 							\
-							-blurmaster ${o}${s}_$r.pb05.$h.NRerrts.niml.dset 			\
-							-input ${o}${s}_$r.pb05.$h.NRerrts.niml.dset 				\
-							-output ${s}_$r.pb06.$h.smooth.niml.dset
-						if (! -f ${s}_$r.pb06.$h.smooth.niml.dset) then
-							echo "smoothing, ${r}:${h} failed..." >> $log
+				foreach c ($censor)
+					foreach h (lh rh)
+						if (! -f ${s}_$r.pb06.$h.smooth.${c}mm.niml.dset) then
+							SurfSmooth 									\
+								-spec $SUMA_dir/$s/SUMA/std.60.${s}_$h.spec 				\
+								-surf_A smoothwm							\
+								-met HEAT_07 								\
+								-target_fwhm $fwhm 							\
+								-detrend_master 							\
+								-blurmaster ${o}${s}_$r.pb05.$h.NRerrts.${c}mm.niml.dset 		\
+								-input ${o}${s}_$r.pb05.$h.NRerrts.${c}mm.niml.dset 			\
+								-output ${s}_$r.pb06.$h.smooth.${c}mm.niml.dset
+							if (! -f ${s}_$r.pb06.$h.smooth.${c}mm.niml.dset) then
+								echo "smoothing, ${r}:${c}mm:${h} failed..." >> $log
+							endif
+						else
+							echo " "
+							echo "${s}_$r.pb06.$h.smooth.${c}mm already exists"
+							echo " "
 						endif
-					else
-						echo " "
-						echo "${s}_$r.pb06.$h.smooth already exists"
-						echo " "
-					endif
+					end
 				end
 			end
 # tsnr dataset
@@ -644,11 +654,13 @@ foreach s ($subj)
 			set g_runs = ()
 			set b_runs = ()
 			foreach r ($c_runs)
-				if (-f ${s}_$r.pb06.lh.smooth.niml.dset && -f ${s}_$r.pb06.rh.smooth.niml.dset) then
-					set g_runs = ($g_runs $r)
-				else
-					set b_runs = ($b_runs $r)
-				endif
+				foreach c ($censor)
+					if (-f ${s}_$r.pb06.lh.smooth.${c}mm.niml.dset && -f ${s}_$r.pb06.rh.smooth.${c}mm.niml.dset) then
+						set g_runs = ($g_runs $r.${c}mm)
+					else
+						set b_runs = ($b_runs $r.${c}mm)
+					endif
+				end
 			end
 			if ($#b_runs != 0) echo "FAILED:" $b_runs >> $log
 			if ($#g_runs != 0) then
