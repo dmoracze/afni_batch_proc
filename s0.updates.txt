@@ -315,3 +315,5 @@ s3.rest_vol_preproc
 		align properly
 		clean up some typos
 		proper SUMA SurfVol alignment
+s3.rest_surf_preproc
+	- added multiple censor options

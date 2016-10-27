@@ -367,7 +367,7 @@ foreach s ($subj)
 			if (! -f ${s}_SurfVol+tlrc.HEAD) then
 				@SUMA_AlignToExperiment 									\
 					-exp_anat ${s}_anat_final+tlrc 								\
-					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+tlrc 						\
+					-surf_anat $SUMA_dir/$s/SUMA/${s}_SurfVol+orig 						\
 					-wd -align_centers 									\
 					-prefix ${s}_SurfVol 									\
 					-surf_anat_followers $SUMA_dir/$s/SUMA/aseg.nii
