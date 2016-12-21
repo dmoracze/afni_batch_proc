@@ -3,12 +3,13 @@
 # written by dmoracze on 9/21/2015
 #
 # Initialize variables and set defaults
-set count = 1
-set dir = `pwd`
-set perm = 775
-set study = "RED\ Social\ Communication"
-set uname = $user
-set subj = ()
+set count 	= 1
+set dir 	= `pwd`
+set perm 	= 775
+set study 	= "RED\ Social\ Communication"
+set PI 		= "Elizabeth\ Redcay"
+set uname 	= $user
+set subj 	= ()
 # parse the inputs
 if ($#argv == 0) then
 	echo " "
@@ -34,6 +35,9 @@ while ($count <= $#argv)
 			echo "-study My Study     study ID directory from fmri server, quotes and escaped" 
 			echo "                    spaces are essential"
 			echo "                      default is RED Social Communication"
+			echo " -PI Jane Doe 	  PI diretory from the fmri server, quotes and escaped"
+			echo "			  spaces are essential"
+			echo " 			    default is Elizabeth Redcay"
 			echo "-user dmitri        dmitri is the user who will log on to fmri (if not you,"
 			echo "                    it will ask for password)"
 			echo "                      default is current user"
@@ -59,6 +63,10 @@ while ($count <= $#argv)
 			@ count++
 			set uname = $argv[$count]
 		breaksw
+		case "-PI":
+			@ count++
+			set PI = $argv[$count]
+		breaksw
 	endsw
 	shift
 end
@@ -72,7 +80,7 @@ if ($#subj == 0) then
 endif
 # download data and change permissions
 foreach s ($subj)
-	scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/Elizabeth\ Redcay/$study/$s/" $dir
+	scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/$PI/$study/$s/" $dir
 	chmod -R $perm $dir/$s
 end
 echo " "

@@ -317,3 +317,9 @@ s3.rest_vol_preproc
 		proper SUMA SurfVol alignment
 s3.rest_surf_preproc
 	- added multiple censor options
+
+12/21/16
+========
+dl.data
+	- added a custom PI option to grab data from other PIs from the fmri server
+		default is Elizabeth Redcay
