@@ -35,9 +35,9 @@ while ($count <= $#argv)
 			echo "-study My Study     study ID directory from fmri server, quotes and escaped" 
 			echo "                    spaces are essential"
 			echo "                      default is RED Social Communication"
-			echo " -PI Jane Doe 	  PI diretory from the fmri server, quotes and escaped"
-			echo "			  spaces are essential"
-			echo " 			    default is Elizabeth Redcay"
+			echo "-PI Jane Doe        PI diretory from the fmri server, quotes and escaped"
+			echo "                    spaces are essential"
+			echo "                      default is Elizabeth Redcay"
 			echo "-user dmitri        dmitri is the user who will log on to fmri (if not you,"
 			echo "                    it will ask for password)"
 			echo "                      default is current user"
@@ -65,7 +65,7 @@ while ($count <= $#argv)
 		breaksw
 		case "-PI":
 			@ count++
-			set PI = $argv[$count]
+			set PI = "$argv[$count]"
 		breaksw
 	endsw
 	shift
