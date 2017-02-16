@@ -323,3 +323,18 @@ s3.rest_surf_preproc
 dl.data
 	- added a custom PI option to grab data from other PIs from the fmri server
 		default is Elizabeth Redcay
+
+1/10/17
+=======
+dl.data
+	- added '-opt' option to quickly change between 2 PIs and studies (for speed with TVI and RED studies)
+
+2/16/17
+=======
+dl.data
+	- removed '-perm' option and added chgrp to psyc-dscn-data and chmod to g+w
+	- added chmod gu+w
+	- added find $dir/$s -type d -exec chmod g+s {} \;
+	- added different ending if there is an error
+	- script will now display info and sleep for 5 seconds so that the user can review it
+	- added check to see if subject's folder exists

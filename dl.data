@@ -6,8 +6,7 @@
 set count 	= 1
 set dir 	= `pwd`
 set perm 	= 775
-set study 	= "RED\ Social\ Communication"
-set PI 		= "Elizabeth\ Redcay"
+set opt 	= 1
 set uname 	= $user
 set subj 	= ()
 # parse the inputs
@@ -30,8 +29,6 @@ while ($count <= $#argv)
 			echo "                    to download more than one subject, use -s before every ID"
 			echo "-dir ../study_dir   directory to download data to (absolute or relative path)"
 			echo "                      default is current directory"
-			echo "-perm perm_code     permissions code when changing permissions on data"
-			echo "                      default is 775"
 			echo "-study My Study     study ID directory from fmri server, quotes and escaped" 
 			echo "                    spaces are essential"
 			echo "                      default is RED Social Communication"
@@ -41,6 +38,10 @@ while ($count <= $#argv)
 			echo "-user dmitri        dmitri is the user who will log on to fmri (if not you,"
 			echo "                    it will ask for password)"
 			echo "                      default is current user"
+			echo "-opt 1              choose from different options that will customize the -study"
+			echo "                    and PI for you, for added convenience"
+			echo "                    opt 1: PI = Elizabeth Redcay, study = RED"
+			echo "                    opt 2: PI = Stefanie Kuchinsky, study = TVI"
 			echo " "
 		exit
 		case "-s":
@@ -50,10 +51,6 @@ while ($count <= $#argv)
 		case "-dir":
 			@ count++
 			set dir = $argv[$count]
-		breaksw
-		case "-perm":
-			@ count++
-			set perm = $argv[$count]
 		breaksw
 		case "-study":
 			@ count++
@@ -67,6 +64,10 @@ while ($count <= $#argv)
 			@ count++
 			set PI = "$argv[$count]"
 		breaksw
+		case "-opt":
+			@ count++
+			set opt = $argv[$count]
+		breaksw
 	endsw
 	shift
 end
@@ -78,14 +79,52 @@ if ($#subj == 0) then
 	echo " "
 	exit
 endif
+# parse predefined options
+if ($opt == 1) then
+	set study = "RED\ Social\ Communication"
+	set PI 	= "Elizabeth\ Redcay"
+else if ($opt == 2) then
+	set study = "TVI\ Timbre\ VS\ ID"
+	set PI = "Stefanie\ Kuchinsky"
+else
+	echo " "
+	echo "-opt not understood"
+	echo "dl.data -h for help file"
+	echo " "
+	exit
+endif
 # download data and change permissions
 foreach s ($subj)
+	echo " "
+	echo "PI:       $PI"
+	echo "Study:    $study"
+	echo "Subject:  $s"
+	echo " "
+	if (-d $dir/$s) then
+		echo " "
+		echo "Subject's folder already exists!"
+		echo " "
+		continue
+	endif
+	sleep 5
 	scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/$PI/$study/$s/" $dir
-	chmod -R $perm $dir/$s
+	chgrp -R psyc-dscn-data $dir/$s
+	chmod -R ug+w $dir/$s
+	find $dir/$s -type d -exec chmod g+s {} \;
 end
-echo " "
-echo "============================================"
-echo "A long time ago on a server far, far away..."
-echo "============================================"
-echo " "
+if ( ! -d $dir/$s ) then
+	echo " "
+	echo "============================================"
+	echo "   Do or do not, there is no try. - Yoda    "
+	echo "                                            "
+	echo "   There was an error with your download    "
+	echo "============================================"
+	echo " "
+else
+	echo " "
+	echo "============================================"
+	echo "A long time ago on a server far, far away..."
+	echo "============================================"
+	echo " "
+endif
 exit
