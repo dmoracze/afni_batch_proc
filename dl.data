@@ -5,10 +5,10 @@
 # Initialize variables and set defaults
 set count 	= 1
 set dir 	= `pwd`
-set perm 	= 775
 set opt 	= 1
 set uname 	= $user
 set subj 	= ()
+set scan 	= all
 # parse the inputs
 if ($#argv == 0) then
 	echo " "
@@ -42,6 +42,14 @@ while ($count <= $#argv)
 			echo "                    and PI for you, for added convenience"
 			echo "                    opt 1: PI = Elizabeth Redcay, study = RED"
 			echo "                    opt 2: PI = Stefanie Kuchinsky, study = TVI"
+			echo "                      default is -opt 1"
+			echo "-scan all           choose which DICOM directory you want, only really applicable"
+			echo "                    if the subject has multiple scans (e.g. CMNT and CHT) on fmri"
+			echo "                    use a Run Identifier that will be unique to the specific DICOM"
+			echo "                    directory that you want. For example, 'CMNT' and 'CHT' are good"
+			echo "                    but 'T1' is not because there will be typically a T1 protocol"
+			echo "                    all DICOM folders. "all" will download the entire subject"
+			echo "                      default is -scan all"
 			echo " "
 		exit
 		case "-s":
@@ -68,6 +76,10 @@ while ($count <= $#argv)
 			@ count++
 			set opt = $argv[$count]
 		breaksw
+		case "-scan":
+			@ count ++
+			set scan = $argv[$count]
+		breaksw
 	endsw
 	shift
 end
@@ -93,12 +105,14 @@ else
 	echo " "
 	exit
 endif
+
 # download data and change permissions
 foreach s ($subj)
 	echo " "
 	echo "PI:       $PI"
 	echo "Study:    $study"
 	echo "Subject:  $s"
+	echo "Scan:     $scan"
 	echo " "
 	if (-d $dir/$s) then
 		echo " "
@@ -106,25 +120,75 @@ foreach s ($subj)
 		echo " "
 		continue
 	endif
-	sleep 5
-	scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/$PI/$study/$s/" $dir
-	chgrp -R psyc-dscn-data $dir/$s
-	chmod -R ug+w $dir/$s
-	find $dir/$s -type d -exec chmod g+s {} \;
+	sleep 2
+
+	# find the correct DICOM folder
+	set dl_dir = "/export/software/fmri/massstorage/$PI/$study/$s/"
+	set dl = ()
+	if ($scan != "all") then
+		echo " "
+		echo "Searching $s for $scan..."
+		set dcm = (`ssh -q ${uname}@fmri.umd.edu ls /export/software/fmri/massstorage/$PI/$study/$s/`)
+		alias calc 'awk "BEGIN{ print \!* }" '
+		foreach d ($dcm)
+			set temp = (`ssh -q ${uname}@fmri.umd.edu ls /export/software/fmri/massstorage/$PI/$study/$s/$d/`)
+			set temp = `echo $temp | grep -c $scan`
+			if ($temp) then
+				set dl = ($dl $d)
+			endif
+		end
+		# Check to ensure only 1 directory was chosen
+		if ($#dl == 1) then
+			echo "  Found!"
+			echo " "
+		else if ($#dl > 1) then
+			echo " "
+			echo "More that one DICOM directory matches the criteria"
+			echo "I don't know how to choose, perhaps I should download the whole directory?"
+			echo " "
+			echo " Failing..."
+			echo " "
+			exit
+		else if ($#dl == 0) then
+			echo " "
+			echo "$s does not have $scan"
+			echo " "
+			echo " Failing..."
+			echo " "
+			exit
+		endif
+	endif
+
+	# prepare the directory structure (if needed) and download the data
+	if ($#dl > 0) then
+		mkdir $dir/$s
+		scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/$PI/$study/$s/$dl" $dir/$s
+		chgrp -R psyc-dscn-data $dir/$s
+		chmod -R ug+w $dir/$s
+		find $dir/$s -type d -exec chmod g+s {} \;
+	else
+		scp -r ${uname}@fmri.umd.edu:"/export/software/fmri/massstorage/$PI/$study/$s/" $dir
+		chgrp -R psyc-dscn-data $dir/$s
+		chmod -R ug+w $dir/$s
+		find $dir/$s -type d -exec chmod g+s {} \;
+	endif
+
+	# check if it downloaded
+	if (-d $dir/$s) then
+		echo " "
+		echo "$s downloaded!"
+		echo " "
+		sleep 2
+	else
+		echo " "
+		echo "$s failed..."
+		echo " "
+		sleep 2
+	endif
 end
-if ( ! -d $dir/$s ) then
-	echo " "
-	echo "============================================"
-	echo "   Do or do not, there is no try. - Yoda    "
-	echo "                                            "
-	echo "   There was an error with your download    "
-	echo "============================================"
-	echo " "
-else
-	echo " "
-	echo "============================================"
-	echo "A long time ago on a server far, far away..."
-	echo "============================================"
-	echo " "
-endif
+echo " "
+echo "============================================"
+echo "A long time ago on a server far, far away..."
+echo "============================================"
+echo " "
 exit

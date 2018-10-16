@@ -4,7 +4,6 @@
 #
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
 # Script assumes that T1+orig and functional runs +orig are in the data directory
-# Also assumes that @SUMA_Make_Spec_FS has been run for surface files
 #
 # Assumed directory structure:
 # data_dir/

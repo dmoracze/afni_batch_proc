@@ -16,8 +16,9 @@
 set subj 	= ()
 set data_dir 	= 
 set timing_dir	= 
-set censor	= 1
-set study_id 	= V292
+set censor	= 1 		# in mm, corresponds to filename created by s4.motion
+set study_id 	= V292 		# string to identify the specific functional runs
+
 # log will include the runs that were included in the resulting stats file
 set log_name	= decon.log
 set log_dir	= ~/Desktop
@@ -26,7 +27,7 @@ set ow_log	= yes
 set job 	= 10 	# the more jobs, the faster
 set all_runs	= yes 	# this will concatenate all runs named $study_id
 # if all_runs 	= no:
-set runs 	= ()
+set runs 	= () # must include study ID (e.g. V292_1)
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
@@ -94,6 +95,7 @@ foreach s ($subj)
 				else
 					echo "Cannot find:" $r >> $log
 				endif
+			end
 		endif
 		echo "runs:" $c_runs >> $log 
 # cat motion

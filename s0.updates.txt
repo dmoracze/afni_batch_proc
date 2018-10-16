@@ -338,3 +338,23 @@ dl.data
 	- added different ending if there is an error
 	- script will now display info and sleep for 5 seconds so that the user can review it
 	- added check to see if subject's folder exists
+
+2/20/17
+=======
+dl.data
+	- removed failed script ending as it doesn't make much sense...
+	- changed sleep to 2
+	- print if the subjects data was downloaded (rough guess!)
+
+2/28/17
+=======
+s1.dataset_ISSS
+	- template script to make .nii files instead of HEAD/BRIK datasets
+s3.task_vol_preproc_ISSS
+	- begin proc script for ISSS data
+	- removed skip_bad_motion because it was just taking up space
+	
+8/1/17
+======
+dl.data
+	-added -scan so that user can designate which DICOM directory they want if the subject has more than one (e.g. cmnt or CHT)
