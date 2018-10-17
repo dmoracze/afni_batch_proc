@@ -1,0 +1,1 @@
+TCSH shell scripts for batch processing in AFNI
