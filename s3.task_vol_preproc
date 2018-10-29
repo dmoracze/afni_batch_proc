@@ -42,7 +42,7 @@ set template 		= MNI_avg152T1+tlrc 	# specify template for normalization, if not
 # Set script options
 set overwrite 		= no			# yes 	-> delete conflicting files and create anew
 						# no 	-> if conflicting file exists, proc step skipped 
-set clean_output 	= yes			# yes 	-> clean output, only essential final files will be saved
+set clean_output 	= no			# yes 	-> clean output, only essential final files will be saved
 						# no 	-> all files will be saved, can be used for troubleshooting
 set want_tsnr 		= no 			# yes 	-> will output a tsnr dataset based on the volreg step, and TSNR.$run.out which = mean TSNR text file
 set skip_bad_motion	= no 			# yes 	-> calculate percent of censored TRs based on below parameters and will skip 
@@ -197,7 +197,7 @@ foreach s ($subj)
 					-anat2epi -anat ${s}_T1+orig 					\
 					-save_skullstrip 						\
 					-suffix _al 							\
-					-epi $v_run -align_centers yes					\
+					-epi $v_run							\
 					-epi_strip 3dAutomask 						\
 					-epi_base $v_vol -volreg off -tshift off
 				if (! -f ${s}_T1_ns+orig.HEAD) then

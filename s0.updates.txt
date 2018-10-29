@@ -357,4 +357,9 @@ s3.task_vol_preproc_ISSS
 8/1/17
 ======
 dl.data
-	-added -scan so that user can designate which DICOM directory they want if the subject has more than one (e.g. cmnt or CHT)
+	- added -scan so that user can designate which DICOM directory they want if the subject has more than one (e.g. cmnt or CHT)
+
+10/29/18
+========
+s3.task_vol_preproc
+	- removed -align_centers yes from align_epi_anat.py because it kept causing issues
